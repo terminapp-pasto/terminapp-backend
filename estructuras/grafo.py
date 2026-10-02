@@ -1,3 +1,5 @@
+from estructuras.matriz import Matriz   
+
 class Arista:
     def __init__(self, destino, peso, empresa, ruta_id):
         self.destino = destino
@@ -7,8 +9,9 @@ class Arista:
         self.siguiente = None
 
 class Vertice:
-    def __init__(self, nombre):
+    def __init__(self, nombre, indice):
         self.nombre = nombre
+        self.indice = indice
         self.primera_arista = None
         self.siguiente = None
 
@@ -33,7 +36,7 @@ class Grafo:
         existente = self.buscar_vertice(nombre)
         if existente is not None:
             return existente
-        nuevo = Vertice(nombre)
+        nuevo = Vertice(nombre, self.cantidad)
         nuevo.siguiente = self.primer_vertice
         self.primer_vertice = nuevo
         self.cantidad += 1
@@ -56,4 +59,30 @@ class Grafo:
                 texto += f" [{arista.destino} {arista.peso} min {arista.empresa}]"
                 arista = arista.siguiente
             print(texto)
-            vertice = vertice.siguiente              
+            vertice = vertice.siguiente
+
+    def buscar_por_indice(self, indice):
+        actual = self.primer_vertice    
+        while actual is not None:
+            if actual.indice == indice:
+                return actual
+            actual = actual.siguiente
+        return None
+
+    def matriz_de_tiempos(self):
+        matriz = Matriz(self.cantidad, self.cantidad)
+        vertice = self.primer_vertice
+        while vertice is not None:
+            matriz.asignar(vertice.indice, vertice.indice, 0)
+            arista = vertice.primera_arista
+            while arista is not None:
+                destino = self.buscar_vertice(arista.destino)
+                actual = matriz.obtener(vertice.indice, destino.indice)
+                if actual is None or arista.peso < actual:
+                    matriz.asignar(vertice.indice, destino.indice, arista.peso)
+                arista = arista.siguiente
+            vertice = vertice.siguiente
+        return matriz   
+     
+    
+                      
