@@ -17,7 +17,15 @@ class Vertice:
 
     def agregar_arista(self, arista):
         arista.siguiente = self.primera_arista
-        self.primera_arista = arista      
+        self.primera_arista = arista    
+
+    def buscar_arista(self, ruta_id):
+        arista = self.primera_arista
+        while arista is not None:
+            if arista.ruta_id == ruta_id:
+                return arista
+            arista = arista.siguiente
+        return None
 
 class Grafo:
     def __init__(self):
