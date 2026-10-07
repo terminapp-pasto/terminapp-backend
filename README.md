@@ -65,3 +65,45 @@ erDiagram
         timestamptz creado_en
     }
 ```
+## Arquitectura
+
+TerminAPP tiene cuatro capas. El frontend solo habla con el backend, y el backend es el único que habla con la base de datos, con la IA y con Stripe. Las claves viven en variables de entorno del backend, nunca en el frontend ni en Git.
+
+```mermaid
+flowchart LR
+    U["Usuario<br/>navegador o celular"]
+    F["Frontend<br/>React + Vite<br/>Vercel"]
+    B["Backend<br/>Python + FastAPI<br/>Render"]
+    BD[("Base de datos<br/>PostgreSQL<br/>Neon")]
+    IA["IA<br/>API del modelo de lenguaje"]
+    S["Stripe<br/>pagos en modo prueba"]
+
+    U -->|escribe en el chat| F
+    F -->|HTTP + JSON| B
+    B -->|SQL| BD
+    B -->|HTTPS + API key| IA
+    B -->|sesion de pago| S
+```
+
+### Recorrido de una petición
+
+```mermaid
+sequenceDiagram
+    actor U as Usuario
+    participant F as Frontend
+    participant B as Backend
+    participant IA as IA
+    participant BD as Base de datos
+
+    U->>F: Quiero ir a Cali esta noche, lo mas barato
+    F->>B: POST /chat
+    B->>IA: mensaje y herramientas disponibles
+    IA-->>B: usar buscar_salidas con destino Cali
+    B->>BD: consulta de rutas y horarios
+    BD-->>B: filas
+    Note over B: El grafo valida la ruta, el AVL filtra por hora y el heap ordena por precio
+    B->>IA: resultados de la busqueda
+    IA-->>B: respuesta en lenguaje natural
+    B-->>F: JSON con la respuesta
+    F-->>U: muestra las opciones
+```
