@@ -25,15 +25,23 @@ Python, FastAPI, PostgreSQL (Neon), Render.
 
 ## Base de datos
 
-Diagrama entidad-relación de las 5 tablas en PostgreSQL.
+Diagrama entidad-relación de las 12 tablas en PostgreSQL. Las 5 primeras sostienen la búsqueda; las demás, la autenticación, la compra, el pago y el chat con la IA.
 
 ```mermaid
 erDiagram
     EMPRESAS ||--o{ RUTAS : "opera"
+    EMPRESAS ||--o{ BUSES : "tiene"
     DESTINOS ||--o{ RUTAS : "es origen de"
     DESTINOS ||--o{ RUTAS : "es destino de"
     RUTAS ||--o{ HORARIOS : "tiene"
     HORARIOS ||--o{ TIQUETES : "se vende en"
+    BUSES ||--o{ ASIENTOS : "tiene"
+    ASIENTOS ||--o{ TIQUETES : "se asigna en"
+    USUARIOS ||--o{ PASAJEROS : "registra"
+    PASAJEROS ||--o{ TIQUETES : "viaja con"
+    TIQUETES ||--o{ PAGOS : "se paga con"
+    USUARIOS ||--o{ CONVERSACIONES : "inicia"
+    CONVERSACIONES ||--o{ MENSAJES : "contiene"
 
     EMPRESAS {
         int id PK
@@ -60,8 +68,54 @@ erDiagram
     TIQUETES {
         int id PK
         int horario_id FK
+        int pasajero_id FK
+        int asiento_id FK
         date fecha_viaje
         text estado
+        timestamptz creado_en
+    }
+    USUARIOS {
+        int id PK
+        text nombre
+        text correo
+        text password_hash
+        timestamptz creado_en
+    }
+    PASAJEROS {
+        int id PK
+        int usuario_id FK
+        text nombre
+        text documento
+    }
+    BUSES {
+        int id PK
+        int empresa_id FK
+        text placa
+        int capacidad
+    }
+    ASIENTOS {
+        int id PK
+        int bus_id FK
+        int numero
+    }
+    PAGOS {
+        int id PK
+        int tiquete_id FK
+        text stripe_session_id
+        int valor
+        text estado
+        timestamptz creado_en
+    }
+    CONVERSACIONES {
+        int id PK
+        int usuario_id FK
+        timestamptz creado_en
+    }
+    MENSAJES {
+        int id PK
+        int conversacion_id FK
+        text rol
+        text contenido
         timestamptz creado_en
     }
 ```
