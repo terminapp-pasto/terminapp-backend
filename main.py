@@ -3,12 +3,19 @@ import os
 import psycopg
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from servicios.busqueda import buscar_salidas   
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 app = FastAPI(title="TerminAPP Backend")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://terminapp-frontend.*\.vercel\.app|http://localhost:5173",
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
