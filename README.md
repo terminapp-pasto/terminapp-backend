@@ -79,6 +79,16 @@ stateDiagram-v2
     PAGADO --> [*]
 ```
 
+### Pruebas automáticas
+
+Cada estructura tiene sus pruebas en la carpeta `pruebas/` (39 en total). Se corren con el entorno activado:
+
+```
+python -m unittest discover -s pruebas -p "prueba_*.py" -v
+```
+
+Si todo está bien, al final sale `OK`.
+
 ## Base de datos
 
 Diagrama entidad-relación de las 12 tablas en PostgreSQL. Las 5 primeras sostienen la búsqueda; las demás, la autenticación, la compra, el pago y el chat con la IA.
