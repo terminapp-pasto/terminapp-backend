@@ -345,12 +345,20 @@ def cancelar(usuario_id, pago_id):
     return estado
 
 
+def _hora_de_vencimiento(estado, creado_en):
+    """Hora de Colombia hasta la que se guarda una reserva sin pagar (None si no aplica)."""
+    minutos = {RESERVADO: MINUTOS_RESERVA, PAGANDO: MINUTOS_PAGO}.get(estado)
+    if minutos is None:
+        return None
+    return (creado_en + timedelta(minutes=minutos)).astimezone(ZONA_COLOMBIA).strftime("%H:%M")
+
+
 def mis_tiquetes(usuario_id, orden="recientes"):
     with _conectar() as conexion, conexion.cursor() as cursor:
         _vencer_reservas(cursor)
         cursor.execute(
             """SELECT t.id, t.pago_id, t.estado, t.fecha_viaje, h.hora_salida, e.nombre,
-                      o.nombre, d.nombre, a.numero, p.nombre, p.documento, h.precio
+                      o.nombre, d.nombre, a.numero, p.nombre, p.documento, h.precio, t.creado_en
                FROM tiquetes t
                JOIN pasajeros p ON p.id = t.pasajero_id
                JOIN asientos a ON a.id = t.asiento_id
@@ -371,6 +379,7 @@ def mis_tiquetes(usuario_id, orden="recientes"):
             "fecha": f[3].isoformat(), "hora_salida": f[4].strftime("%H:%M"),
             "empresa": f[5], "origen": f[6], "destino": f[7], "asiento": f[8],
             "pasajero": f[9], "documento": f[10], "precio": f[11],
+            "vence": _hora_de_vencimiento(f[2], f[12]),
         }
         for f in filas
     )
