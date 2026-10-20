@@ -56,7 +56,7 @@ Las 10 estructuras están hechas desde cero en la carpeta `estructuras/`, con no
 | # | Estructura | Archivo | Para qué se usa en TerminAPP | Complejidad |
 |---|---|---|---|---|
 | 1 | Grafo dirigido y ponderado (lista de adyacencia) | `grafo.py` | Municipios como vértices y rutas como aristas con la duración; responde "¿hay ruta de Pasto a X?" | Buscar vértice O(V), recorrer rutas de un vértice O(grado) |
-| 2 | Matriz con nodos enlazados | `matriz.py` | Matriz de tiempos de viaje entre municipios, construida desde el grafo | Acceso O(f + c) |
+| 2 | Matriz con nodos enlazados | `matriz.py` | Tabla de la distancia de edición para corregir destinos mal escritos ("bodota" → Bogotá) y matriz de tiempos entre municipios | Acceso O(f + c); corrección O(n·m·(n+m)) |
 | 3 | Árbol AVL | `avl.py` | Horarios de una ruta ordenados por hora; "desde las 18:00" sin revisar todos | Insertar y buscar O(log n) |
 | 4 | Montículo mínimo (heap) | `heap.py` | Ordena las salidas encontradas por hora o por precio | Insertar y extraer O(log n) |
 | 5 | Árbol n-ario | `nario.py` | Jerarquía terminal → empresas → rutas → horarios | Recorrido O(n) |
@@ -81,7 +81,7 @@ stateDiagram-v2
 
 ### Pruebas automáticas
 
-Cada estructura tiene sus pruebas en la carpeta `pruebas/` (39 en total). Se corren con el entorno activado:
+Cada estructura tiene sus pruebas en la carpeta `pruebas/` (46 en total). Se corren con el entorno activado:
 
 ```
 python -m unittest discover -s pruebas -p "prueba_*.py" -v
