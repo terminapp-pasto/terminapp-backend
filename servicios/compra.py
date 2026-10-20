@@ -126,7 +126,7 @@ def cambiar_estado(estado_actual, evento):
 
 CONSULTA_SALIDA = """
     SELECT h.id, h.hora_salida, h.precio, e.nombre, o.nombre, d.nombre,
-           r.duracion_min, b.id, b.capacidad
+           r.duracion_min, b.id, b.capacidad, b.placa
     FROM horarios h
     JOIN rutas r ON r.id = h.ruta_id
     JOIN empresas e ON e.id = r.empresa_id
@@ -174,6 +174,7 @@ def _salida(cursor, horario_id):
         "duracion_min": fila[6],
         "bus_id": fila[7],
         "capacidad": fila[8],
+        "placa": fila[9],
     }
 
 
