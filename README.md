@@ -41,7 +41,7 @@ Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
 | GET | `/mis-tiquetes?orden=recientes` | 🔒 Historial de tiquetes del usuario |
 
 ## Cómo correrlo en local
-1. Crear el archivo `.env` con `DATABASE_URL`, `GEMINI_API_KEY`, `CLAVE_TOKENS`, `STRIPE_SECRET_KEY` y `FRONTEND_URL` (nunca se sube a Git).
+1. Copiar `.env.example` como `.env` y llenar `DATABASE_URL`, `GEMINI_API_KEY`, `CLAVE_TOKENS`, `STRIPE_SECRET_KEY` y `FRONTEND_URL` (nunca se sube a Git).
 2. Activar el entorno: `.\venv\Scripts\Activate.ps1`
 3. Encender el servidor **en el puerto 8001**, para no chocar con otros proyectos que usan el 8000:
    ```
