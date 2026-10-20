@@ -30,9 +30,12 @@ Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
 | GET | `/buscar?destino=Cali&desde=18:00&ordenar_por=precio` | Busca salidas desde Pasto |
 | GET | `/destinos` | Lista los destinos con rutas desde Pasto |
 | POST | `/chat` | Recibe la conversación y responde con la IA y las salidas encontradas |
+| POST | `/registro` | Crea una cuenta (la contraseña se guarda cifrada con PBKDF2) y devuelve un token |
+| POST | `/inicio-sesion` | Comprueba correo y contraseña y devuelve un token JWT válido por 24 horas |
+| GET | `/yo` | 🔒 Ruta protegida: devuelve el usuario dueño del token (`Authorization: Bearer <token>`) |
 
 ## Cómo correrlo en local
-1. Crear el archivo `.env` con `DATABASE_URL` y `GEMINI_API_KEY` (nunca se sube a Git).
+1. Crear el archivo `.env` con `DATABASE_URL`, `GEMINI_API_KEY` y `CLAVE_TOKENS` (nunca se sube a Git).
 2. Activar el entorno: `.\venv\Scripts\Activate.ps1`
 3. Encender el servidor **en el puerto 8001**, para no chocar con otros proyectos que usan el 8000:
    ```
