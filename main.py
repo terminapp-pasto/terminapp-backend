@@ -23,7 +23,15 @@ from servicios.usuarios import buscar_por_correo, buscar_por_id, crear_usuario
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-app = FastAPI(title="TerminAPP Backend")
+app = FastAPI(
+    title="TerminAPP Backend",
+    version="1.0.0",
+    description=(
+        "API de TerminAPP: búsqueda de pasajes desde la Terminal de Transportes de Pasto, "
+        "chat con IA, cuentas de usuario y compra con pago de prueba en Stripe. "
+        "Las rutas con 🔒 necesitan el token del inicio de sesión: usa el botón **Authorize**."
+    ),
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"https://terminapp-frontend.*\.vercel\.app|http://localhost:5173",
@@ -32,12 +40,12 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/", tags=["Sistema"], summary="Mensaje de bienvenida")
 def inicio():
     return {"mensaje": "Hello World desde el backend de TerminAPP"}
 
 
-@app.get("/salud")
+@app.get("/salud", tags=["Sistema"], summary="Comprueba la conexión con la base de datos")
 def salud():
     with psycopg.connect(DATABASE_URL) as conexion:
         with conexion.cursor() as cursor:
@@ -45,7 +53,7 @@ def salud():
             version = cursor.fetchone()[0]
     return {"base_de_datos": "conectada", "version": version}
 
-@app.get("/buscar")
+@app.get("/buscar", tags=["Búsqueda"], summary="Busca salidas desde una hora, ordenadas por hora o por precio")
 def buscar(destino: str, origen: str = "Pasto", desde: str = "00:00", ordenar_por: str = "hora"):
     try:
         horas, minutos = desde.split(":")
@@ -61,7 +69,7 @@ def buscar(destino: str, origen: str = "Pasto", desde: str = "00:00", ordenar_po
     return {"origen": origen, "destino": nombre_destino, "cantidad": len(salidas), "salidas": salidas}
 
 
-@app.get("/destinos")
+@app.get("/destinos", tags=["Búsqueda"], summary="Lista los destinos con rutas desde Pasto")
 def destinos():
     return listar_destinos()
 
@@ -75,7 +83,7 @@ class PeticionChat(BaseModel):
     mensajes: list[Mensaje]
 
 
-@app.post("/chat")
+@app.post("/chat", tags=["Chat con IA"], summary="Responde la conversación usando la IA y el motor de búsqueda")
 def chat(peticion: PeticionChat):
     if not peticion.mensajes:
         raise HTTPException(status_code=400, detail="Envía al menos un mensaje")
@@ -123,7 +131,7 @@ def usuario_actual(credenciales: HTTPAuthorizationCredentials | None = Depends(e
     return usuario
 
 
-@app.post("/registro", status_code=201)
+@app.post("/registro", status_code=201, tags=["Cuenta"], summary="Crea una cuenta y devuelve un token")
 def registro(peticion: PeticionRegistro):
     nombre = peticion.nombre.strip()
     correo = peticion.correo.strip().lower()
@@ -141,7 +149,7 @@ def registro(peticion: PeticionRegistro):
     return respuesta_con_token(usuario)
 
 
-@app.post("/inicio-sesion")
+@app.post("/inicio-sesion", tags=["Cuenta"], summary="Inicia sesión y devuelve un token JWT de 24 horas")
 def inicio_sesion(peticion: PeticionInicioSesion):
     usuario = buscar_por_correo(peticion.correo.strip().lower())
     # El mismo mensaje para correo o contraseña incorrectos, para no revelar qué correos existen
@@ -150,7 +158,7 @@ def inicio_sesion(peticion: PeticionInicioSesion):
     return respuesta_con_token(usuario)
 
 
-@app.get("/yo")
+@app.get("/yo", tags=["Cuenta"], summary="🔒 Datos del usuario dueño del token")
 def yo(usuario: dict = Depends(usuario_actual)):
     """Ruta protegida: devuelve los datos del usuario que inició sesión."""
     return usuario
@@ -177,7 +185,7 @@ class PeticionCompra(BaseModel):
     pasajero: Pasajero
 
 
-@app.get("/horarios/{horario_id}/asientos")
+@app.get("/horarios/{horario_id}/asientos", tags=["Compra"], summary="Mapa de asientos de una salida en una fecha")
 def asientos(horario_id: int, fecha: str):
     """Mapa de asientos de una salida en una fecha (AAAA-MM-DD)."""
     try:
@@ -186,7 +194,7 @@ def asientos(horario_id: int, fecha: str):
         raise error_de_compra(error)
 
 
-@app.post("/compras", status_code=201)
+@app.post("/compras", status_code=201, tags=["Compra"], summary="🔒 Aparta asientos por 15 minutos")
 def crear_compra(peticion: PeticionCompra, usuario: dict = Depends(usuario_actual)):
     """🔒 Aparta los asientos por 15 minutos mientras el usuario paga."""
     try:
@@ -202,7 +210,7 @@ def crear_compra(peticion: PeticionCompra, usuario: dict = Depends(usuario_actua
         raise error_de_compra(error)
 
 
-@app.post("/compras/{pago_id}/pagar")
+@app.post("/compras/{pago_id}/pagar", tags=["Compra"], summary="🔒 Abre la página de pago de Stripe")
 def pagar(pago_id: int, usuario: dict = Depends(usuario_actual)):
     """🔒 Crea la página de pago de Stripe y devuelve su dirección."""
     try:
@@ -219,7 +227,7 @@ def pagar(pago_id: int, usuario: dict = Depends(usuario_actual)):
     return {"url": url}
 
 
-@app.get("/compras/confirmar")
+@app.get("/compras/confirmar", tags=["Compra"], summary="🔒 Confirma con Stripe que el pago se hizo")
 def confirmar(session_id: str, usuario: dict = Depends(usuario_actual)):
     """🔒 Al volver de Stripe, pregunta a Stripe si el pago se hizo y confirma los tiquetes."""
     try:
@@ -235,7 +243,7 @@ def confirmar(session_id: str, usuario: dict = Depends(usuario_actual)):
     return {"pago_id": pago_id, "estado": estado}
 
 
-@app.post("/compras/{pago_id}/cancelar")
+@app.post("/compras/{pago_id}/cancelar", tags=["Compra"], summary="🔒 Cancela una compra sin pagar")
 def cancelar_compra(pago_id: int, usuario: dict = Depends(usuario_actual)):
     """🔒 Cancela una compra que todavía no se ha pagado y libera los asientos."""
     try:
@@ -244,7 +252,7 @@ def cancelar_compra(pago_id: int, usuario: dict = Depends(usuario_actual)):
         raise error_de_compra(error)
 
 
-@app.get("/mis-tiquetes")
+@app.get("/mis-tiquetes", tags=["Compra"], summary="🔒 Historial de tiquetes del usuario")
 def tiquetes(orden: Literal["recientes", "antiguos"] = "recientes", usuario: dict = Depends(usuario_actual)):
     """🔒 Historial de tiquetes del usuario (lista doblemente enlazada)."""
     return compra.mis_tiquetes(usuario["id"], orden)
