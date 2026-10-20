@@ -43,4 +43,5 @@ def buscar(destino: str, origen: str = "Pasto", desde: str = "00:00", ordenar_po
     if salidas is None:
         raise HTTPException(status_code=404, detail="No conozco ese origen o ese destino")
 
-    return {"origen": origen, "destino": destino, "cantidad": len(salidas), "salidas": salidas}
+    nombre_destino = salidas[0]["destino"] if salidas else destino
+    return {"origen": origen, "destino": nombre_destino, "cantidad": len(salidas), "salidas": salidas}

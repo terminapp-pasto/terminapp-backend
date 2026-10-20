@@ -1,5 +1,11 @@
 from estructuras.matriz import Matriz   
 
+def normalizar(texto):
+    texto = texto.strip().lower()
+    texto = texto.replace("á", "a").replace("é", "e").replace("í", "i")
+    texto = texto.replace("ó", "o").replace("ú", "u").replace("ü", "u")
+    return texto
+
 class Arista:
     def __init__(self, destino, peso, empresa, ruta_id):
         self.destino = destino
@@ -33,9 +39,10 @@ class Grafo:
         self.cantidad = 0
 
     def buscar_vertice(self, nombre):
+        buscado = normalizar(nombre)
         actual = self.primer_vertice
         while actual is not None:
-            if actual.nombre == nombre:
+            if normalizar(actual.nombre) == buscado:
                 return actual
             actual = actual.siguiente
         return None
