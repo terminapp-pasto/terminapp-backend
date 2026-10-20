@@ -21,6 +21,7 @@ Reglas:
 - Si pide lo más barato, ordena por precio. Si no dice nada, ordena por hora.
 - Interpreta las horas así: "en la mañana" desde 05:00, "en la tarde" desde 12:00, "en la noche" o "esta noche" desde 18:00.
 - Escribe los precios en pesos colombianos, por ejemplo $61.000.
+- La aplicación muestra todas las salidas encontradas en tarjetas debajo de tu mensaje. No repitas la lista completa: en dos o tres frases recomienda la mejor opción según lo que pidió el usuario y menciona cuántas salidas hay.
 - Si no hay salidas, dilo y sugiere buscar desde una hora más temprana.
 - Todavía no puedes vender pasajes. Si el usuario quiere comprar, dile que la compra en línea estará disponible muy pronto y que mientras tanto puede comprar en la taquilla de la empresa.
 - Si preguntan algo que no tiene que ver con pasajes de bus, explica con amabilidad que solo ayudas con viajes desde la Terminal de Pasto.
@@ -34,6 +35,10 @@ def _convertir(mensajes):
         rol = "user" if mensaje["rol"] == "usuario" else "model"
         if not contenidos and rol == "model":
             continue  # la conversación debe empezar con un mensaje del usuario
+        if contenidos and contenidos[-1]["role"] == rol:
+            # dos mensajes seguidos del mismo rol (por ejemplo, tras un error) se unen en uno
+            contenidos[-1]["parts"].append({"text": mensaje["texto"]})
+            continue
         contenidos.append({"role": rol, "parts": [{"text": mensaje["texto"]}]})
     return contenidos
 
