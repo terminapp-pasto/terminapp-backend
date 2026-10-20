@@ -27,7 +27,7 @@ Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/salud` | Comprueba la conexión con la base de datos |
-| GET | `/buscar?destino=Cali&desde=18:00&ordenar_por=precio` | Busca salidas desde Pasto |
+| GET | `/buscar?destino=Cali&fecha=2026-10-24&desde=18:00&ordenar_por=precio` | Busca salidas desde Pasto para un día, con los cupos libres de ese día |
 | GET | `/destinos` | Lista los destinos con rutas desde Pasto |
 | POST | `/chat` | Recibe la conversación y responde con la IA y las salidas encontradas |
 | POST | `/registro` | Crea una cuenta (la contraseña se guarda cifrada con PBKDF2) y devuelve un token |
