@@ -53,20 +53,24 @@ def salud():
             version = cursor.fetchone()[0]
     return {"base_de_datos": "conectada", "version": version}
 
-@app.get("/buscar", tags=["Búsqueda"], summary="Busca salidas desde una hora, ordenadas por hora o por precio")
-def buscar(destino: str, origen: str = "Pasto", desde: str = "00:00", ordenar_por: str = "hora"):
+@app.get("/buscar", tags=["Búsqueda"], summary="Busca salidas de un día desde una hora, con cupos libres reales")
+def buscar(destino: str, origen: str = "Pasto", desde: str = "00:00", ordenar_por: str = "hora", fecha: str = ""):
+    try:
+        dia = compra.fecha_de_venta(fecha)
+    except compra.ErrorCompra as error:
+        raise error_de_compra(error)
     try:
         horas, minutos = desde.split(":")
         desde_minutos = int(horas) * 60 + int(minutos)
     except ValueError:
         raise HTTPException(status_code=400, detail="La hora debe tener el formato HH:MM")
 
-    salidas = buscar_salidas(origen, destino, desde_minutos, ordenar_por)
+    salidas = buscar_salidas(origen, destino, desde_minutos, ordenar_por, dia)
     if salidas is None:
         raise HTTPException(status_code=404, detail="No conozco ese origen o ese destino")
 
     nombre_destino = salidas[0]["destino"] if salidas else destino
-    return {"origen": origen, "destino": nombre_destino, "cantidad": len(salidas), "salidas": salidas}
+    return {"origen": origen, "destino": nombre_destino, "fecha": dia.isoformat(), "cantidad": len(salidas), "salidas": salidas}
 
 
 @app.get("/destinos", tags=["Búsqueda"], summary="Lista los destinos con rutas desde Pasto")

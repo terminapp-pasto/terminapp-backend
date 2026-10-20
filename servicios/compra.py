@@ -392,3 +392,34 @@ def leer_fecha(texto):
         return date.fromisoformat(texto)
     except (TypeError, ValueError):
         raise ErrorCompra("La fecha debe tener el formato AAAA-MM-DD")
+
+
+def hoy_en_colombia():
+    return datetime.now(ZONA_COLOMBIA).date()
+
+
+def fecha_de_venta(texto):
+    """Lee una fecha AAAA-MM-DD (vacía = hoy) y revisa que se vendan pasajes para ese día."""
+    hoy = hoy_en_colombia()
+    fecha = hoy if not texto else leer_fecha(texto)
+    if fecha < hoy:
+        raise ErrorCompra("Esa fecha ya pasó. Elige hoy o un día futuro")
+    if fecha > hoy + timedelta(days=DIAS_DE_VENTA):
+        raise ErrorCompra(f"Solo se venden pasajes hasta {DIAS_DE_VENTA} días adelante")
+    return fecha
+
+
+def ocupados_por_horario(fecha):
+    """Tabla hash horario_id -> asientos ya vendidos o apartados ese día."""
+    ocupados = TablaHash()
+    with _conectar() as conexion, conexion.cursor() as cursor:
+        _vencer_reservas(cursor)
+        cursor.execute(
+            """SELECT horario_id, COUNT(*) FROM tiquetes
+               WHERE fecha_viaje = %s AND estado IN ('RESERVADO', 'PAGANDO', 'PAGADO')
+               GROUP BY horario_id;""",
+            (fecha,),
+        )
+        for horario_id, cantidad in cursor:
+            ocupados.insertar(horario_id, cantidad)
+    return ocupados
