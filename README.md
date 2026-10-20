@@ -33,15 +33,51 @@ Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
 | POST | `/registro` | Crea una cuenta (la contraseña se guarda cifrada con PBKDF2) y devuelve un token |
 | POST | `/inicio-sesion` | Comprueba correo y contraseña y devuelve un token JWT válido por 24 horas |
 | GET | `/yo` | 🔒 Ruta protegida: devuelve el usuario dueño del token (`Authorization: Bearer <token>`) |
+| GET | `/horarios/{id}/asientos?fecha=AAAA-MM-DD` | Mapa de los 40 asientos de una salida en una fecha |
+| POST | `/compras` | 🔒 Aparta de 1 a 5 asientos por 15 minutos |
+| POST | `/compras/{pago_id}/pagar` | 🔒 Crea la página de pago de Stripe (modo prueba) |
+| GET | `/compras/confirmar?session_id=...` | 🔒 Pregunta a Stripe si se pagó y confirma los tiquetes |
+| POST | `/compras/{pago_id}/cancelar` | 🔒 Cancela una compra sin pagar y libera los asientos |
+| GET | `/mis-tiquetes?orden=recientes` | 🔒 Historial de tiquetes del usuario |
 
 ## Cómo correrlo en local
-1. Crear el archivo `.env` con `DATABASE_URL`, `GEMINI_API_KEY` y `CLAVE_TOKENS` (nunca se sube a Git).
+1. Crear el archivo `.env` con `DATABASE_URL`, `GEMINI_API_KEY`, `CLAVE_TOKENS`, `STRIPE_SECRET_KEY` y `FRONTEND_URL` (nunca se sube a Git).
 2. Activar el entorno: `.\venv\Scripts\Activate.ps1`
 3. Encender el servidor **en el puerto 8001**, para no chocar con otros proyectos que usan el 8000:
    ```
    uvicorn main:app --reload --port 8001
    ```
 4. Abrir http://127.0.0.1:8001/docs
+
+## Estructuras de datos
+
+Las 10 estructuras están hechas desde cero en la carpeta `estructuras/`, con nodos enlazados propios (sin usar listas ni diccionarios de Python como estructura).
+
+| # | Estructura | Archivo | Para qué se usa en TerminAPP | Complejidad |
+|---|---|---|---|---|
+| 1 | Grafo dirigido y ponderado (lista de adyacencia) | `grafo.py` | Municipios como vértices y rutas como aristas con la duración; responde "¿hay ruta de Pasto a X?" | Buscar vértice O(V), recorrer rutas de un vértice O(grado) |
+| 2 | Matriz con nodos enlazados | `matriz.py` | Matriz de tiempos de viaje entre municipios, construida desde el grafo | Acceso O(f + c) |
+| 3 | Árbol AVL | `avl.py` | Horarios de una ruta ordenados por hora; "desde las 18:00" sin revisar todos | Insertar y buscar O(log n) |
+| 4 | Montículo mínimo (heap) | `heap.py` | Ordena las salidas encontradas por hora o por precio | Insertar y extraer O(log n) |
+| 5 | Árbol n-ario | `nario.py` | Jerarquía terminal → empresas → rutas → horarios | Recorrido O(n) |
+| 6 | Tabla hash con encadenamiento | `tabla_hash.py` | Mapa de asientos de un bus (número → LIBRE/OCUPADO) | Insertar, buscar y eliminar O(1) promedio |
+| 7 | Pila | `pila.py` | Deshacer: si al reservar varios asientos uno ya está ocupado, se liberan los anteriores en orden inverso | Apilar y desapilar O(1) |
+| 8 | Cola | `cola.py` | Reservas pendientes por orden de llegada; las que pasan de 15 minutos sin pagar se vencen | Encolar y desencolar O(1) |
+| 9 | Máquina de estados | `maquina_estados.py` | Ciclo de vida del tiquete: ELIGIENDO → RESERVADO → PAGANDO → PAGADO, o CANCELADO / VENCIDO | Transición O(t) |
+| 10 | Lista doblemente enlazada | `lista_doble.py` | Historial "Mis tiquetes", recorrible de los más recientes a los más antiguos y al revés | Agregar y quitar O(1), recorrer O(n) |
+
+```mermaid
+stateDiagram-v2
+    [*] --> ELIGIENDO
+    ELIGIENDO --> RESERVADO: reservar
+    RESERVADO --> PAGANDO: ir_a_pagar
+    PAGANDO --> PAGADO: confirmar_pago
+    RESERVADO --> CANCELADO: cancelar
+    PAGANDO --> CANCELADO: cancelar
+    RESERVADO --> VENCIDO: vencer (15 min)
+    PAGANDO --> VENCIDO: vencer (45 min)
+    PAGADO --> [*]
+```
 
 ## Base de datos
 
@@ -59,7 +95,7 @@ erDiagram
     ASIENTOS ||--o{ TIQUETES : "se asigna en"
     USUARIOS ||--o{ PASAJEROS : "registra"
     PASAJEROS ||--o{ TIQUETES : "viaja con"
-    TIQUETES ||--o{ PAGOS : "se paga con"
+    PAGOS ||--o{ TIQUETES : "cubre"
     USUARIOS ||--o{ CONVERSACIONES : "inicia"
     CONVERSACIONES ||--o{ MENSAJES : "contiene"
 
@@ -90,6 +126,7 @@ erDiagram
         int horario_id FK
         int pasajero_id FK
         int asiento_id FK
+        int pago_id FK
         date fecha_viaje
         text estado
         timestamptz creado_en
@@ -120,7 +157,6 @@ erDiagram
     }
     PAGOS {
         int id PK
-        int tiquete_id FK
         text stripe_session_id
         int valor
         text estado
