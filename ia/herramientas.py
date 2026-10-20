@@ -6,6 +6,7 @@ el árbol AVL y el heap.
 """
 
 from servicios.busqueda import buscar_salidas
+from servicios.compra import ErrorCompra, fecha_de_venta
 from servicios.cargar_datos import cargar_grafo
 
 ORIGEN = "Pasto"
@@ -15,8 +16,8 @@ DECLARACIONES = [
     {
         "name": "buscar_pasajes",
         "description": (
-            "Busca las salidas de bus desde la Terminal de Pasto hacia un destino, "
-            "a partir de una hora, ordenadas por hora de salida o por precio. "
+            "Busca las salidas de bus desde la Terminal de Pasto hacia un destino en un día, "
+            "a partir de una hora, ordenadas por hora de salida o por precio, con los cupos libres de ese día. "
             "Úsala siempre que el usuario pregunte por pasajes, horarios o precios."
         ),
         "parameters": {
@@ -25,6 +26,10 @@ DECLARACIONES = [
                 "destino": {
                     "type": "string",
                     "description": "Municipio de destino, por ejemplo Cali, Ipiales o Sandoná.",
+                },
+                "fecha": {
+                    "type": "string",
+                    "description": "Día del viaje en formato AAAA-MM-DD. Si el usuario no dice el día, usa la fecha de hoy.",
                 },
                 "desde": {
                     "type": "string",
@@ -46,7 +51,11 @@ DECLARACIONES = [
 ]
 
 
-def buscar_pasajes(destino, desde="00:00", ordenar_por="hora"):
+def buscar_pasajes(destino, desde="00:00", ordenar_por="hora", fecha=""):
+    try:
+        dia = fecha_de_venta(fecha)
+    except ErrorCompra as error:
+        return {"error": error.mensaje}
     try:
         horas, minutos = desde.split(":")
         desde_minutos = int(horas) * 60 + int(minutos)
@@ -56,10 +65,10 @@ def buscar_pasajes(destino, desde="00:00", ordenar_por="hora"):
     if ordenar_por not in ("hora", "precio"):
         ordenar_por = "hora"
 
-    salidas = buscar_salidas(ORIGEN, destino, desde_minutos, ordenar_por)
+    salidas = buscar_salidas(ORIGEN, destino, desde_minutos, ordenar_por, dia)
     if salidas is None:
         return {"error": f"No hay rutas desde {ORIGEN} hacia {destino}. Usa listar_destinos para ver los disponibles."}
-    return {"cantidad": len(salidas), "salidas": salidas}
+    return {"fecha": dia.isoformat(), "cantidad": len(salidas), "salidas": salidas}
 
 
 def listar_destinos():
@@ -82,6 +91,7 @@ def ejecutar(nombre, argumentos):
                 destino=str(argumentos.get("destino", "")),
                 desde=str(argumentos.get("desde", "00:00")),
                 ordenar_por=str(argumentos.get("ordenar_por", "hora")),
+                fecha=str(argumentos.get("fecha", "")),
             )
         if nombre == "listar_destinos":
             return listar_destinos()

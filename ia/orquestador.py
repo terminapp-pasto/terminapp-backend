@@ -5,8 +5,11 @@ herramienta. Si pide una, el backend la ejecuta, le devuelve el resultado y la
 IA vuelve a pensar con ese dato.
 """
 
+from datetime import datetime, timedelta
+
 from ia.gemini import generar
 from ia.herramientas import DECLARACIONES, ejecutar
+from servicios.compra import DIAS_DE_VENTA, ZONA_COLOMBIA
 
 MAX_VUELTAS = 5
 MAX_MENSAJES = 20
@@ -19,13 +22,38 @@ Reglas:
 - Nunca inventes horarios, precios, empresas ni destinos. Para cualquier dato usa las herramientas.
 - Si el usuario no dice el destino, pregúntaselo. Si no sabe a dónde puede ir, usa listar_destinos.
 - Si pide lo más barato, ordena por precio. Si no dice nada, ordena por hora.
-- Interpreta las horas así: "en la mañana" desde 05:00, "en la tarde" desde 12:00, "en la noche" o "esta noche" desde 18:00.
+- Interpreta las horas así: "en la mañana" o "temprano" desde 05:00, "en la tarde" desde 12:00, "en la noche" o "esta noche" desde 18:00.
+- Siempre busca para un día concreto (parámetro fecha, AAAA-MM-DD). Calcula la fecha a partir de HOY (abajo): "mañana" (sin "en la") es el día siguiente, "pasado mañana" dos días después, "el sábado" es el próximo sábado, "en una semana" son 7 días después, "el 15 de noviembre" es esa fecha. Si no dice día, busca para hoy.
+- Solo se venden pasajes desde hoy hasta {dias} días adelante.
+- Si es para hoy y ya no quedan salidas, dilo y ofrece buscar para mañana.
+- Al responder menciona el día del viaje, por ejemplo "el sábado 24 de octubre".
 - Escribe los precios en pesos colombianos, por ejemplo $61.000.
 - La aplicación muestra todas las salidas encontradas en tarjetas debajo de tu mensaje. No repitas la lista completa: en dos o tres frases recomienda la mejor opción según lo que pidió el usuario y menciona cuántas salidas hay.
 - Si no hay salidas, dilo y sugiere buscar desde una hora más temprana.
-- Tú no haces la compra directamente. Si el usuario quiere comprar, dile que toque el botón "Comprar" en la tarjeta de la salida que prefiera: ahí elige la fecha, los asientos y paga en línea con tarjeta. Si todavía no has buscado salidas, búscalas primero para que aparezcan las tarjetas.
+- Tú no haces la compra directamente. Si el usuario quiere comprar, dile que toque el botón "Comprar" en la tarjeta de la salida que prefiera: ahí confirma la fecha, elige los asientos y paga en línea con tarjeta. Si todavía no has buscado salidas, búscalas primero para que aparezcan las tarjetas.
 - Si preguntan algo que no tiene que ver con pasajes de bus, explica con amabilidad que solo ayudas con viajes desde la Terminal de Pasto.
+
+HOY es {hoy}. Hora actual en Colombia: {hora}.
+Próximos días: {proximos}.
 """
+
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _fecha_en_texto(fecha):
+    return f"{DIAS[fecha.weekday()]} {fecha.day} de {MESES[fecha.month - 1]} de {fecha.year} ({fecha.isoformat()})"
+
+
+def instrucciones(ahora=None):
+    """Las reglas del asistente con la fecha de hoy, para que entienda "el sábado" o "en una semana"."""
+    ahora = ahora or datetime.now(ZONA_COLOMBIA)
+    hoy = ahora.date()
+    proximos = "; ".join(_fecha_en_texto(hoy + timedelta(days=n)) for n in range(1, 8))
+    return INSTRUCCIONES.format(
+        dias=DIAS_DE_VENTA, hoy=_fecha_en_texto(hoy), hora=ahora.strftime("%H:%M"), proximos=proximos
+    )
 
 
 def _convertir(mensajes):
@@ -49,7 +77,7 @@ def responder(mensajes):
     salidas = []
 
     for _ in range(MAX_VUELTAS):
-        contenido = generar(contenidos, INSTRUCCIONES, DECLARACIONES)
+        contenido = generar(contenidos, instrucciones(), DECLARACIONES)
         contenidos.append(contenido)
 
         partes = contenido.get("parts", [])
