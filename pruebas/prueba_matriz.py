@@ -1,7 +1,7 @@
 """Pruebas de la matriz con nodos enlazados (estructuras/matriz.py)."""
 import unittest
 
-from estructuras.grafo import Grafo
+from estructuras.grafo import Grafo, distancia_de_edicion
 from estructuras.matriz import Matriz
 
 
@@ -33,6 +33,12 @@ class PruebaMatriz(unittest.TestCase):
         self.assertEqual(tiempos.obtener(pasto, ipiales), 100)
         self.assertEqual(tiempos.obtener(pasto, pasto), 0)
         self.assertIsNone(tiempos.obtener(ipiales, pasto))
+
+    def test_distancia_de_edicion_con_la_matriz(self):
+        self.assertEqual(distancia_de_edicion("bodota", "Bogotá"), 1)  # cambiar d por g
+        self.assertEqual(distancia_de_edicion("Sandona", "Sandoná"), 0)  # las tildes no cuentan
+        self.assertEqual(distancia_de_edicion("moco", "Mocoa"), 1)  # falta una letra
+        self.assertEqual(distancia_de_edicion("", "Cali"), 4)
 
 
 if __name__ == "__main__":

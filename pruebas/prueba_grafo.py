@@ -1,7 +1,7 @@
 """Pruebas del grafo dirigido y ponderado (estructuras/grafo.py)."""
 import unittest
 
-from estructuras.grafo import Grafo, normalizar
+from estructuras.grafo import Grafo, distancia_de_edicion, normalizar
 
 
 def grafo_de_ejemplo():
@@ -44,6 +44,19 @@ class PruebaGrafo(unittest.TestCase):
         pasto = grafo_de_ejemplo().buscar_vertice("Pasto")
         self.assertEqual(pasto.buscar_arista(7).destino, "Cali")
         self.assertIsNone(pasto.buscar_arista(99))
+
+    def test_corrige_errores_de_escritura(self):
+        grafo = Grafo()
+        for i, destino in enumerate(("Ipiales", "Sandoná", "Tumaco", "Mocoa", "Cali", "Bogotá")):
+            grafo.agregar_ruta("Pasto", destino, 100, "EMPRESA", i)
+        self.assertEqual(grafo.buscar_parecido("bodota").nombre, "Bogotá")
+        self.assertEqual(grafo.buscar_parecido("kali").nombre, "Cali")
+        self.assertEqual(grafo.buscar_parecido("ipialez").nombre, "Ipiales")
+
+    def test_no_inventa_destinos_lejanos(self):
+        grafo = grafo_de_ejemplo()
+        self.assertIsNone(grafo.buscar_parecido("Medellín"))
+        self.assertIsNone(grafo.buscar_parecido("xyz"))
 
 
 if __name__ == "__main__":
