@@ -65,10 +65,21 @@ def buscar_pasajes(destino, desde="00:00", ordenar_por="hora", fecha=""):
     if ordenar_por not in ("hora", "precio"):
         ordenar_por = "hora"
 
+    resultado = {"fecha": dia.isoformat()}
     salidas = buscar_salidas(ORIGEN, destino, desde_minutos, ordenar_por, dia)
     if salidas is None:
-        return {"error": f"No hay rutas desde {ORIGEN} hacia {destino}. Usa listar_destinos para ver los disponibles."}
-    return {"fecha": dia.isoformat(), "cantidad": len(salidas), "salidas": salidas}
+        # puede ser un error de escritura: "bodota" -> Bogotá
+        parecido = cargar_grafo().buscar_parecido(destino)
+        if parecido is not None and parecido.nombre != ORIGEN:
+            salidas = buscar_salidas(ORIGEN, parecido.nombre, desde_minutos, ordenar_por, dia)
+            resultado["nota"] = f'El usuario escribió "{destino}"; se entendió como {parecido.nombre}.'
+    if salidas is None:
+        return {
+            "error": f"No hay rutas desde {ORIGEN} hacia {destino}.",
+            "destinos_disponibles": listar_destinos()["destinos"],
+        }
+    resultado.update({"cantidad": len(salidas), "salidas": salidas})
+    return resultado
 
 
 def listar_destinos():
