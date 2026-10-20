@@ -21,7 +21,24 @@ Proyecto final de Estructuras de Datos - Universidad Cooperativa de Colombia, se
 - Repositorio frontend: https://github.com/terminapp-pasto/terminapp-frontend
 
 ## Tecnologías
-Python, FastAPI, PostgreSQL (Neon), Render.
+Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
+
+## Endpoints
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/salud` | Comprueba la conexión con la base de datos |
+| GET | `/buscar?destino=Cali&desde=18:00&ordenar_por=precio` | Busca salidas desde Pasto |
+| GET | `/destinos` | Lista los destinos con rutas desde Pasto |
+| POST | `/chat` | Recibe la conversación y responde con la IA y las salidas encontradas |
+
+## Cómo correrlo en local
+1. Crear el archivo `.env` con `DATABASE_URL` y `GEMINI_API_KEY` (nunca se sube a Git).
+2. Activar el entorno: `.\venv\Scripts\Activate.ps1`
+3. Encender el servidor **en el puerto 8001**, para no chocar con otros proyectos que usan el 8000:
+   ```
+   uvicorn main:app --reload --port 8001
+   ```
+4. Abrir http://127.0.0.1:8001/docs
 
 ## Base de datos
 
