@@ -42,4 +42,4 @@ class ArbolNario:
         hijo = nodo.primer_hijo
         while hijo is not None:
             self._mostrar(hijo, nivel + 1)
-            hijo = hijo.siguiente_hermano
+            hijo = hijo.siguiente_hermano   
