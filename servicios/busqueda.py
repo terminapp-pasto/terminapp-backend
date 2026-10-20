@@ -6,8 +6,11 @@ from servicios.cargar_datos import cargar_grafo, cargar_horarios
 def buscar_salidas(origen, destino, desde=0, ordenar_por="hora"):
     grafo = cargar_grafo()
     vertice = grafo.buscar_vertice(origen)
-    if vertice is None or grafo.buscar_vertice(destino) is None:
+    vertice_destino = grafo.buscar_vertice(destino)
+    if vertice is None or vertice_destino is None:
         return None
+    origen = vertice.nombre
+    destino = vertice_destino.nombre
 
     arbol = cargar_horarios(destino)
     heap = Heap()
