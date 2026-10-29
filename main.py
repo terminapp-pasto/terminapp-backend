@@ -1,5 +1,6 @@
 import os
 import re
+from contextlib import asynccontextmanager
 
 import psycopg
 from dotenv import load_dotenv
@@ -18,12 +19,29 @@ from ia.herramientas import listar_destinos
 from ia.orquestador import responder
 from servicios import compra
 from servicios.busqueda import buscar_salidas
-from servicios.usuarios import buscar_por_correo, buscar_por_id, crear_usuario
+from servicios.usuarios import asegurar_usuario, buscar_por_correo, buscar_por_id, crear_usuario
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Cuenta de prueba para que el profesor revise la app sin registrarse.
+# El login del frontend muestra estos mismos datos.
+CUENTA_PRUEBA = {"nombre": "Profesor", "correo": "profesor@terminapp.com", "contrasena": "Profesor2026"}
+
+
+@asynccontextmanager
+async def al_arrancar(app):
+    try:
+        asegurar_usuario(
+            CUENTA_PRUEBA["nombre"], CUENTA_PRUEBA["correo"], cifrar_contrasena(CUENTA_PRUEBA["contrasena"])
+        )
+    except psycopg.Error as error:
+        # Si la base de datos no responde, la API arranca igual
+        print(f"No se pudo crear la cuenta de prueba: {error}")
+    yield
+
 app = FastAPI(
+    lifespan=al_arrancar,
     title="TerminAPP Backend",
     version="1.0.0",
     description=(
