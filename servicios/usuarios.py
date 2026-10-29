@@ -47,3 +47,14 @@ def buscar_por_id(usuario_id):
     if fila is None:
         return None
     return {"id": fila[0], "nombre": fila[1], "correo": fila[2]}
+
+
+def asegurar_usuario(nombre, correo, password_hash):
+    """Crea el usuario si no existe, o le pone esta contraseña si ya existe."""
+    with psycopg.connect(os.getenv("DATABASE_URL")) as conexion:
+        with conexion.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO usuarios (nombre, correo, password_hash) VALUES (%s, %s, %s) "
+                "ON CONFLICT (correo) DO UPDATE SET nombre = EXCLUDED.nombre, password_hash = EXCLUDED.password_hash;",
+                (nombre, correo, password_hash),
+            )
