@@ -1,10 +1,10 @@
 -- Datos reales consultados el 1 de octubre de 2026.
 -- Empresas y destinos: directorio oficial terminalpasto.gov.co
 -- Salidas, precios y duraciones: pinbus.com (Sandoná: redbus.co)
--- Cupos: regla del sistema TerminAPP (40 puestos a la venta por salida)
+-- Cupos (seats): regla del sistema TerminAPP (40 puestos a la venta por salida)
 
 -- DESTINOS (id 1 a 7)
-INSERT INTO destinos (nombre) VALUES
+INSERT INTO destinations (name) VALUES
 ('Pasto'),     -- 1
 ('Ipiales'),   -- 2
 ('Sandoná'),   -- 3
@@ -14,14 +14,14 @@ INSERT INTO destinos (nombre) VALUES
 ('Bogotá');    -- 7
 
 -- EMPRESAS (id 1 a 4)
-INSERT INTO empresas (nombre) VALUES
+INSERT INTO companies (name) VALUES
 ('TRANSIPIALES'),          -- 1
 ('TRANSANDONA'),           -- 2
 ('EXPRESO BOLIVARIANO'),   -- 3
 ('CONTINENTAL BUS');       -- 4
 
 -- RUTAS (id 1 a 8): empresa, origen, destino, minutos de viaje
-INSERT INTO rutas (empresa_id, origen_id, destino_id, duracion_min) VALUES
+INSERT INTO routes (company_id, origin_id, destination_id, duration_min) VALUES
 (4, 1, 2,  100),  -- 1 Continental   Pasto → Ipiales  (1h 40m)
 (3, 1, 2,  100),  -- 2 Bolivariano   Pasto → Ipiales  (1h 40m)
 (2, 1, 3,  135),  -- 3 Transandoná   Pasto → Sandoná  (2h 15m)
@@ -32,7 +32,7 @@ INSERT INTO rutas (empresa_id, origen_id, destino_id, duracion_min) VALUES
 (4, 1, 7, 1100);  -- 8 Continental   Pasto → Bogotá   (18h 20m)
 
 -- HORARIOS (27 salidas): ruta, hora, precio, cupos
-INSERT INTO horarios (ruta_id, hora_salida, precio, cupos) VALUES
+INSERT INTO schedules (route_id, departure_time, price, seats) VALUES
 -- Pasto → Ipiales
 (1, '10:18',  16000, 40), (1, '15:18',  16000, 40), (1, '18:18',  16000, 40),
 (2, '03:49',  21000, 40), (2, '08:19',  21000, 40),
