@@ -23,25 +23,53 @@ Proyecto final de Estructuras de Datos - Universidad Cooperativa de Colombia, se
 ## Tecnologías
 Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
 
+## Organización del código
+
+```
+config.py            todas las variables de entorno (nada queda quemado en el código)
+main.py              arma la aplicación y une las rutas
+routes/              rutas HTTP: system, search, chat, auth, purchases
+services/            lógica: búsqueda, compra, usuarios, fechas, validación, base de datos
+structs/             las 10 estructuras de datos hechas desde cero
+authentication/      utilities.py (cifrar y verificar contraseñas) y tokens.py (JWT)
+ai/                  gemini.py (proveedor), tools.py (herramientas), orchestrator.py (el chat)
+payments/            stripe_client.py (pago embebido de Stripe en modo prueba)
+db/                  scripts SQL 01 a 05
+tests/               pruebas automáticas
+```
+
 ## Endpoints
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/salud` | Comprueba la conexión con la base de datos |
-| GET | `/buscar?destino=Cali&fecha=2026-10-24&desde=18:00&ordenar_por=precio` | Busca salidas desde Pasto para un día, con los cupos libres de ese día |
-| GET | `/destinos` | Lista los destinos con rutas desde Pasto |
-| POST | `/chat` | Recibe la conversación y responde con la IA y las salidas encontradas |
-| POST | `/registro` | Crea una cuenta (la contraseña se guarda cifrada con PBKDF2) y devuelve un token |
-| POST | `/inicio-sesion` | Comprueba correo y contraseña y devuelve un token JWT válido por 24 horas |
-| GET | `/yo` | 🔒 Ruta protegida: devuelve el usuario dueño del token (`Authorization: Bearer <token>`) |
-| GET | `/horarios/{id}/asientos?fecha=AAAA-MM-DD` | Mapa de los 40 asientos de una salida en una fecha |
-| POST | `/compras` | 🔒 Aparta de 1 a 5 asientos por 15 minutos |
-| POST | `/compras/{pago_id}/pagar` | 🔒 Crea la página de pago de Stripe (modo prueba) |
-| GET | `/compras/confirmar?session_id=...` | 🔒 Pregunta a Stripe si se pagó y confirma los tiquetes |
-| POST | `/compras/{pago_id}/cancelar` | 🔒 Cancela una compra sin pagar y libera los asientos |
-| GET | `/mis-tiquetes?orden=recientes` | 🔒 Historial de tiquetes del usuario |
+| GET | `/health` | Comprueba la conexión con la base de datos |
+| GET | `/search?destination=Cali&date=2026-10-24&from_time=18:00&sort_by=price` | Busca salidas desde Pasto para un día, con los cupos libres de ese día |
+| GET | `/destinations` | Lista los destinos con rutas desde Pasto |
+| POST | `/chat` | Recibe la conversación (`{"messages": [{"role": "user", "text": "..."}]}`) y responde con la IA y las salidas encontradas |
+| POST | `/register` | Crea una cuenta (la contraseña se guarda cifrada con PBKDF2) y devuelve un token |
+| POST | `/login` | Comprueba correo y contraseña y devuelve un token JWT válido por 24 horas |
+| GET | `/me` | 🔒 Ruta protegida: devuelve el usuario dueño del token (`Authorization: Bearer <token>`) |
+| GET | `/schedules/{id}/seats?date=AAAA-MM-DD` | Mapa de los 40 asientos de una salida en una fecha |
+| POST | `/purchases` | 🔒 Aparta de 1 a 5 asientos por 15 minutos, con los datos de un pasajero por asiento |
+| POST | `/purchases/{payment_id}/pay` | 🔒 Prepara el pago embebido de Stripe; si ya hay uno abierto, lo reutiliza |
+| GET | `/purchases/confirm?session_id=...` | 🔒 Pregunta a Stripe si se pagó y confirma los tiquetes |
+| POST | `/purchases/{payment_id}/cancel` | 🔒 Cancela una compra sin pagar y libera los asientos |
+| GET | `/my-tickets?order=newest` | 🔒 Historial de compras del usuario (`newest` u `oldest`) |
+
+## Reglas de la compra
+- **Un pasajero por asiento.** Si se compran 3 asientos se piden 3 nombres y 3 documentos.
+- **Validación con expresiones regulares** (en el frontend y otra vez en el backend, `services/validation.py`):
+  nombre solo letras y espacios, de 3 a 50 caracteres; documento solo números, de 5 a 12 dígitos;
+  correo de máximo 100 caracteres; contraseña de 8 a 72. Un texto gigante se rechaza antes de llegar a la base de datos.
+- **Dos personas y el último asiento.** Al reservar se bloquea la salida (`SELECT ... FOR UPDATE`): PostgreSQL pone en fila
+  (FIFO) las demás reservas de esa salida, la primera gana y la segunda recibe "El asiento 40 acaba de ser ocupado".
+  Además, el índice único `unique_seat_per_trip` impide que un asiento quede vendido dos veces. La prueba
+  `test_two_people_take_the_last_seat_at_the_same_time` lo demuestra con dos reservas al mismo instante.
+- **Nunca dos pagos en proceso para el mismo viaje.** Si el usuario vuelve atrás y reserva otra vez la misma salida,
+  la compra pendiente anterior se cancela y su sesión de Stripe se cierra. Al pagar, si ya hay una sesión abierta se reutiliza.
+- **El pago se confirma preguntándole a Stripe**, no confiando en que el usuario volvió a la página.
 
 ## Cómo correrlo en local
-1. Copiar `.env.example` como `.env` y llenar `DATABASE_URL`, `GEMINI_API_KEY`, `CLAVE_TOKENS`, `STRIPE_SECRET_KEY` y `FRONTEND_URL` (nunca se sube a Git).
+1. Copiar `.env.example` como `.env` y llenar `DATABASE_URL`, `GEMINI_API_KEY`, `TOKEN_SECRET`, `STRIPE_SECRET_KEY` y `FRONTEND_URL` (nunca se sube a Git).
 2. Activar el entorno: `.\venv\Scripts\Activate.ps1`
 3. Encender el servidor **en el puerto 8001**, para no chocar con otros proyectos que usan el 8000:
    ```
@@ -51,138 +79,152 @@ Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
 
 ## Estructuras de datos
 
-Las 10 estructuras están hechas desde cero en la carpeta `estructuras/`, con nodos enlazados propios (sin usar listas ni diccionarios de Python como estructura).
+Las 10 estructuras están hechas desde cero en la carpeta `structs/`, con nodos enlazados propios (sin usar listas ni diccionarios de Python como estructura).
 
 | # | Estructura | Archivo | Para qué se usa en TerminAPP | Complejidad |
 |---|---|---|---|---|
-| 1 | Grafo dirigido y ponderado (lista de adyacencia) | `grafo.py` | Municipios como vértices y rutas como aristas con la duración; responde "¿hay ruta de Pasto a X?" | Buscar vértice O(V), recorrer rutas de un vértice O(grado) |
-| 2 | Matriz con nodos enlazados | `matriz.py` | Tabla de la distancia de edición para corregir destinos mal escritos ("bodota" → Bogotá) y matriz de tiempos entre municipios | Acceso O(f + c); corrección O(n·m·(n+m)) |
-| 3 | Árbol AVL | `avl.py` | Horarios de una ruta ordenados por hora; "desde las 18:00" sin revisar todos | Insertar y buscar O(log n) |
-| 4 | Montículo mínimo (heap) | `heap.py` | Ordena las salidas encontradas por hora o por precio | Insertar y extraer O(log n) |
-| 5 | Árbol n-ario | `nario.py` | Jerarquía terminal → empresas → rutas → horarios | Recorrido O(n) |
-| 6 | Tabla hash con encadenamiento | `tabla_hash.py` | Mapa de asientos de un bus (número → LIBRE/OCUPADO) | Insertar, buscar y eliminar O(1) promedio |
-| 7 | Pila | `pila.py` | Deshacer: si al reservar varios asientos uno ya está ocupado, se liberan los anteriores en orden inverso | Apilar y desapilar O(1) |
-| 8 | Cola | `cola.py` | Reservas pendientes por orden de llegada; las que pasan de 15 minutos sin pagar se vencen | Encolar y desencolar O(1) |
-| 9 | Máquina de estados | `maquina_estados.py` | Ciclo de vida del tiquete: ELIGIENDO → RESERVADO → PAGANDO → PAGADO, o CANCELADO / VENCIDO | Transición O(t) |
-| 10 | Lista doblemente enlazada | `lista_doble.py` | Historial "Mis tiquetes", recorrible de los más recientes a los más antiguos y al revés | Agregar y quitar O(1), recorrer O(n) |
+| 1 | Grafo dirigido y ponderado (lista de adyacencia) | `graph.py` | Municipios como vértices y rutas como aristas con la duración; responde "¿hay ruta de Pasto a X?" | Buscar vértice O(V), recorrer rutas de un vértice O(grado) |
+| 2 | Matriz con nodos enlazados | `matrix.py` | Tabla de la distancia de edición para corregir destinos mal escritos ("bodota" → Bogotá) y matriz de tiempos entre municipios | Acceso O(f + c); corrección O(n·m·(n+m)) |
+| 3 | Árbol AVL | `avl_tree.py` | Horarios de una ruta ordenados por hora; "desde las 18:00" sin revisar todos | Insertar y buscar O(log n) |
+| 4 | Montículo de mínimos (heap) | `min_heap.py` | Ordena las salidas encontradas por hora o por precio | Insertar y extraer O(log n) |
+| 5 | Árbol n-ario | `nary_tree.py` | Jerarquía terminal → empresas → rutas → horarios | Recorrido O(n) |
+| 6 | Tabla hash con encadenamiento | `hash_table.py` | Mapa de asientos de un bus (número → FREE/TAKEN) y agrupar el historial por compra | Insertar, buscar y eliminar O(1) promedio |
+| 7 | Pila | `stack.py` | Deshacer: si al reservar varios asientos uno ya está ocupado, se liberan los anteriores en orden inverso | Apilar y desapilar O(1) |
+| 8 | Cola | `queue.py` | Reservas pendientes por orden de llegada; las que pasan de 15 minutos sin pagar se vencen | Encolar y desencolar O(1) |
+| 9 | Máquina de estados | `state_machine.py` | Ciclo de vida del tiquete: SELECTING → RESERVED → PAYING → PAID, o CANCELLED / EXPIRED | Transición O(t) |
+| 10 | Lista doblemente enlazada | `doubly_linked_list.py` | Historial de compras, recorrible de las más recientes a las más antiguas y al revés | Agregar y quitar O(1), recorrer O(n) |
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ELIGIENDO
-    ELIGIENDO --> RESERVADO: reservar
-    RESERVADO --> PAGANDO: ir_a_pagar
-    PAGANDO --> PAGADO: confirmar_pago
-    RESERVADO --> CANCELADO: cancelar
-    PAGANDO --> CANCELADO: cancelar
-    RESERVADO --> VENCIDO: vencer (15 min)
-    PAGANDO --> VENCIDO: vencer (45 min)
-    PAGADO --> [*]
+    [*] --> SELECTING
+    SELECTING --> RESERVED: reserve
+    RESERVED --> PAYING: start_payment
+    PAYING --> PAYING: start_payment (retoma el pago abierto)
+    PAYING --> PAID: confirm_payment
+    RESERVED --> CANCELLED: cancel
+    PAYING --> CANCELLED: cancel
+    RESERVED --> EXPIRED: expire (15 min)
+    PAYING --> EXPIRED: expire (45 min)
+    PAID --> [*]
 ```
 
 ### Pruebas automáticas
 
-Cada estructura tiene sus pruebas en la carpeta `pruebas/` (46 en total). Se corren con el entorno activado:
+La carpeta `tests/` tiene 77 pruebas: las 10 estructuras, la autenticación, las fechas, la validación de formularios
+y la compra contra una base de datos real. Las pruebas de la compra no prueban solo el camino feliz: asiento ocupado,
+datos inválidos o gigantes, otro usuario tocando mi compra, cancelar, vencer, pagar dos veces y **dos personas pidiendo
+el último asiento al mismo tiempo**.
+
+Se corren con el entorno activado:
 
 ```
-python -m unittest discover -s pruebas -p "prueba_*.py" -v
+python -m unittest discover -s tests -v
+```
+
+Las 11 pruebas de la compra necesitan una base **vacía y desechable** (por ejemplo una rama de Neon llamada `pruebas`),
+porque borran y vuelven a crear las tablas. Sin esa variable se saltan (salen como `skipped`):
+
+```
+$env:TEST_DATABASE_URL="postgresql://...rama-de-pruebas..."
+python -m unittest tests.test_purchases_database -v
 ```
 
 Si todo está bien, al final sale `OK`.
 
 ## Base de datos
 
-Diagrama entidad-relación de las 12 tablas en PostgreSQL. Las 5 primeras sostienen la búsqueda; las demás, la autenticación, la compra, el pago y el chat con la IA.
+Diagrama entidad-relación de las 12 tablas en PostgreSQL (nombres en inglés). Una base nueva se crea con los scripts `db/01` a `db/04`; una base que ya existía en español se pasa a inglés, sin perder datos, con `db/05_translate_to_english.sql`. Las 5 primeras sostienen la búsqueda; las demás, la autenticación, la compra, el pago y el chat con la IA.
 
 ```mermaid
 erDiagram
-    EMPRESAS ||--o{ RUTAS : "opera"
-    EMPRESAS ||--o{ BUSES : "tiene"
-    DESTINOS ||--o{ RUTAS : "es origen de"
-    DESTINOS ||--o{ RUTAS : "es destino de"
-    RUTAS ||--o{ HORARIOS : "tiene"
-    HORARIOS ||--o{ TIQUETES : "se vende en"
-    BUSES ||--o{ ASIENTOS : "tiene"
-    ASIENTOS ||--o{ TIQUETES : "se asigna en"
-    USUARIOS ||--o{ PASAJEROS : "registra"
-    PASAJEROS ||--o{ TIQUETES : "viaja con"
-    PAGOS ||--o{ TIQUETES : "cubre"
-    USUARIOS ||--o{ CONVERSACIONES : "inicia"
-    CONVERSACIONES ||--o{ MENSAJES : "contiene"
+    COMPANIES ||--o{ ROUTES : "opera"
+    COMPANIES ||--o{ BUSES : "tiene"
+    DESTINATIONS ||--o{ ROUTES : "es origen de"
+    DESTINATIONS ||--o{ ROUTES : "es destino de"
+    ROUTES ||--o{ SCHEDULES : "tiene"
+    SCHEDULES ||--o{ TICKETS : "se vende en"
+    BUSES ||--o{ SEATS : "tiene"
+    SEATS ||--o{ TICKETS : "se asigna en"
+    USERS ||--o{ PASSENGERS : "registra"
+    PASSENGERS ||--o{ TICKETS : "viaja con"
+    PAYMENTS ||--o{ TICKETS : "cubre"
+    USERS ||--o{ CONVERSATIONS : "inicia"
+    CONVERSATIONS ||--o{ MESSAGES : "contiene"
 
-    EMPRESAS {
+    COMPANIES {
         int id PK
-        text nombre
+        text name
     }
-    DESTINOS {
+    DESTINATIONS {
         int id PK
-        text nombre
+        text name
     }
-    RUTAS {
+    ROUTES {
         int id PK
-        int empresa_id FK
-        int origen_id FK
-        int destino_id FK
-        int duracion_min
+        int company_id FK
+        int origin_id FK
+        int destination_id FK
+        int duration_min
     }
-    HORARIOS {
+    SCHEDULES {
         int id PK
-        int ruta_id FK
-        time hora_salida
-        int precio
-        int cupos
+        int route_id FK
+        time departure_time
+        int price
+        int seats
     }
-    TIQUETES {
+    TICKETS {
         int id PK
-        int horario_id FK
-        int pasajero_id FK
-        int asiento_id FK
-        int pago_id FK
-        date fecha_viaje
-        text estado
-        timestamptz creado_en
+        int schedule_id FK
+        int passenger_id FK
+        int seat_id FK
+        int payment_id FK
+        date travel_date
+        text status
+        timestamptz created_at
     }
-    USUARIOS {
+    USERS {
         int id PK
-        text nombre
-        text correo
+        varchar50 name
+        varchar100 email
         text password_hash
-        timestamptz creado_en
+        timestamptz created_at
     }
-    PASAJEROS {
+    PASSENGERS {
         int id PK
-        int usuario_id FK
-        text nombre
-        text documento
+        int user_id FK
+        varchar50 name
+        varchar12 document
     }
     BUSES {
         int id PK
-        int empresa_id FK
-        text placa
-        int capacidad
+        int company_id FK
+        text plate
+        int capacity
     }
-    ASIENTOS {
+    SEATS {
         int id PK
         int bus_id FK
-        int numero
+        int number
     }
-    PAGOS {
+    PAYMENTS {
         int id PK
         text stripe_session_id
-        int valor
-        text estado
-        timestamptz creado_en
+        int amount
+        text status
+        timestamptz created_at
     }
-    CONVERSACIONES {
+    CONVERSATIONS {
         int id PK
-        int usuario_id FK
-        timestamptz creado_en
+        int user_id FK
+        timestamptz created_at
     }
-    MENSAJES {
+    MESSAGES {
         int id PK
-        int conversacion_id FK
-        text rol
-        text contenido
-        timestamptz creado_en
+        int conversation_id FK
+        text role
+        text content
+        timestamptz created_at
     }
 ```
 ## Arquitectura
@@ -202,7 +244,7 @@ flowchart LR
     F -->|HTTP + JSON| B
     B -->|SQL| BD
     B -->|HTTPS + API key| IA
-    B -->|sesion de pago| S
+    B -->|sesion de pago embebida| S
 ```
 
 ### Recorrido de una petición
@@ -218,7 +260,7 @@ sequenceDiagram
     U->>F: Quiero ir a Cali esta noche, lo mas barato
     F->>B: POST /chat
     B->>IA: mensaje y herramientas disponibles
-    IA-->>B: usar buscar_salidas con destino Cali
+    IA-->>B: usar search_tickets con destination Cali
     B->>BD: consulta de rutas y horarios
     BD-->>B: filas
     Note over B: El grafo valida la ruta, el AVL filtra por hora y el heap ordena por precio
