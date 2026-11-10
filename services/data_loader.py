@@ -1,0 +1,69 @@
+"""Carga los datos de la base en las estructuras: grafo, árbol AVL y árbol n-ario."""
+
+from services.database import connect
+from structs.avl_tree import AVLTree, minutes_to_text, time_to_minutes
+from structs.graph import Graph
+from structs.nary_tree import NaryNode, NaryTree
+
+TERMINAL_NAME = "Terminal de Pasto"
+
+ROUTES_QUERY = """
+    SELECT r.id, o.name, d.name, r.duration_min, c.name
+    FROM routes r
+    JOIN destinations o ON o.id = r.origin_id
+    JOIN destinations d ON d.id = r.destination_id
+    JOIN companies c ON c.id = r.company_id
+    ORDER BY r.id;
+"""
+
+SCHEDULES_QUERY = """
+    SELECT s.id, s.route_id, s.departure_time, s.price, s.seats
+    FROM schedules s
+    JOIN routes r ON r.id = s.route_id
+    JOIN destinations d ON d.id = r.destination_id
+    WHERE d.name = %s
+    ORDER BY s.departure_time;
+"""
+
+HIERARCHY_QUERY = """
+    SELECT c.name, o.name, d.name, s.id, s.departure_time, s.price
+    FROM schedules s
+    JOIN routes r ON r.id = s.route_id
+    JOIN companies c ON c.id = r.company_id
+    JOIN destinations o ON o.id = r.origin_id
+    JOIN destinations d ON d.id = r.destination_id
+    ORDER BY c.name, d.name, s.departure_time;
+"""
+
+
+def load_graph():
+    """Grafo de rutas: cada municipio es un vértice y cada ruta una arista."""
+    graph = Graph()
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(ROUTES_QUERY)
+        for route_id, origin, destination, duration, company in cursor:
+            graph.add_route(origin, destination, duration, company, route_id)
+    return graph
+
+
+def load_schedules(destination):
+    """Árbol AVL con las salidas hacia un destino, ordenadas por hora."""
+    tree = AVLTree()
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(SCHEDULES_QUERY, (destination,))
+        for schedule_id, route_id, departure_time, price, seats in cursor:
+            tree.insert(time_to_minutes(departure_time), schedule_id, route_id, price, seats)
+    return tree
+
+
+def load_terminal_hierarchy():
+    """Árbol n-ario: Terminal → empresa → ruta → salida."""
+    tree = NaryTree(TERMINAL_NAME)
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(HIERARCHY_QUERY)
+        for company, origin, destination, schedule_id, departure_time, price in cursor:
+            company_node = tree.root.get_or_create_child(company)
+            route_node = company_node.get_or_create_child(f"{origin} → {destination}")
+            label = f"{minutes_to_text(time_to_minutes(departure_time))}  ${price:,}"
+            route_node.add_child(NaryNode(label, schedule_id))
+    return tree
