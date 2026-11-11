@@ -1,9 +1,9 @@
-"""Tokens de sesión en formato JWT (HS256).
+"""Session tokens in JWT format (HS256).
 
-Cuando el usuario inicia sesión recibe un token firmado con TOKEN_SECRET, que
-solo conoce el backend. En cada petición protegida el frontend lo envía en el
-encabezado "Authorization: Bearer <token>" y el backend revisa la firma y la
-fecha de vencimiento.
+When the user logs in they receive a token signed with TOKEN_SECRET, which
+only the backend knows. On every protected request the frontend sends it in
+the "Authorization: Bearer <token>" header and the backend checks the
+signature and the expiration date.
 """
 
 import base64
@@ -14,12 +14,12 @@ import time
 
 import config
 
-TOKEN_LIFETIME_SECONDS = 24 * 60 * 60  # el token vale 24 horas
+TOKEN_LIFETIME_SECONDS = 24 * 60 * 60  # the token is valid for 24 hours
 TOKEN_HEADER = {"alg": "HS256", "typ": "JWT"}
 
 
 class TokenError(Exception):
-    """El token falta, está alterado o ya venció."""
+    """The token is missing, tampered with, or expired."""
 
 
 def _encode_base64url(raw_bytes):
@@ -32,7 +32,7 @@ def _decode_base64url(text):
 
 def _secret_key():
     if not config.TOKEN_SECRET:
-        raise RuntimeError("Falta la variable de entorno TOKEN_SECRET")
+        raise RuntimeError("Missing environment variable TOKEN_SECRET")
     return config.TOKEN_SECRET.encode("utf-8")
 
 
@@ -51,7 +51,7 @@ def create_token(user_id, name):
 
 
 def decode_token(token):
-    """Devuelve los datos (claims) del token si es válido; si no, lanza TokenError."""
+    """Returns the token claims if it is valid; otherwise raises TokenError."""
     try:
         header, payload, signature = token.split(".")
     except ValueError:

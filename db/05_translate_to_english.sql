@@ -1,11 +1,11 @@
--- Script 5: pasa a inglés la base de datos que ya existe en Neon, SIN perder datos.
--- Solo se ejecuta una vez, en una base creada con los scripts viejos en español.
--- Una base nueva no lo necesita: los scripts 01 a 04 ya crean todo en inglés.
--- Todo va dentro de una transacción: si algo falla, no cambia nada.
+-- Script 5: translates the existing Neon database to English WITHOUT losing data.
+-- Run it only once, on a database created with the old Spanish scripts.
+-- A new database does not need it: scripts 01 to 04 already create everything in English.
+-- Everything runs inside one transaction: if anything fails, nothing changes.
 
 BEGIN;
 
--- 1. Tablas
+-- 1. Tables
 ALTER TABLE empresas RENAME TO companies;
 ALTER TABLE destinos RENAME TO destinations;
 ALTER TABLE rutas RENAME TO routes;
@@ -18,7 +18,7 @@ ALTER TABLE pagos RENAME TO payments;
 ALTER TABLE conversaciones RENAME TO conversations;
 ALTER TABLE mensajes RENAME TO messages;
 
--- 2. Columnas
+-- 2. Columns
 ALTER TABLE companies RENAME COLUMN nombre TO name;
 ALTER TABLE destinations RENAME COLUMN nombre TO name;
 
@@ -66,7 +66,7 @@ ALTER TABLE messages RENAME COLUMN rol TO role;
 ALTER TABLE messages RENAME COLUMN contenido TO content;
 ALTER TABLE messages RENAME COLUMN creado_en TO created_at;
 
--- 3. Estados en inglés. Primero se quita el índice que depende de ellos.
+-- 3. Statuses in English. First drop the index that depends on them.
 DROP INDEX asiento_unico_por_viaje;
 
 UPDATE tickets SET status = CASE status
@@ -93,13 +93,13 @@ CREATE UNIQUE INDEX unique_seat_per_trip
 ON tickets (schedule_id, travel_date, seat_id)
 WHERE status IN ('RESERVED', 'PAYING', 'PAID');
 
--- 4. Roles del chat en inglés
+-- 4. Chat roles in English
 ALTER TABLE messages DROP CONSTRAINT mensajes_rol_check;
 UPDATE messages SET role = CASE role WHEN 'usuario' THEN 'user' ELSE 'assistant' END;
 ALTER TABLE messages ADD CONSTRAINT messages_role_check CHECK (role IN ('user', 'assistant'));
 
--- 5. Límites de largo: los mismos que valida el backend, para que un texto
---    gigante no llegue nunca a la base de datos.
+-- 5. Length limits: the same ones the backend validates, so a huge text
+--    never reaches the database.
 ALTER TABLE users ALTER COLUMN name TYPE VARCHAR(50) USING left(name, 50);
 ALTER TABLE users ALTER COLUMN email TYPE VARCHAR(100) USING left(email, 100);
 ALTER TABLE passengers ALTER COLUMN name TYPE VARCHAR(50) USING left(name, 50);

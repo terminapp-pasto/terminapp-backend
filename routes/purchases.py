@@ -1,4 +1,4 @@
-"""Rutas de la compra de pasajes y del historial."""
+"""Ticket purchase and history routes."""
 
 from typing import Literal
 
@@ -13,7 +13,7 @@ from routes.dependencies import get_current_user, require_date
 from services import purchases
 from services.validation import DOCUMENT_MAX_LENGTH, NAME_MAX_LENGTH
 
-router = APIRouter(tags=["Compra"])
+router = APIRouter(tags=["Purchase"])
 
 
 def to_http_error(error):
@@ -29,23 +29,23 @@ class PassengerData(BaseModel):
 class PurchaseRequest(BaseModel):
     schedule_id: int
     date: str = Field(..., max_length=10)
-    # un pasajero por asiento, entre 1 y 5
+    # one passenger per seat, between 1 and 5
     passengers: list[PassengerData] = Field(..., min_length=1, max_length=purchases.MAX_SEATS_PER_PURCHASE)
 
 
-@router.get("/schedules/{schedule_id}/seats", summary="Mapa de asientos de una salida en una fecha")
+@router.get("/schedules/{schedule_id}/seats", summary="Seat map of a departure on a date")
 def seat_map(schedule_id: int, date: str):
-    """Mapa de asientos de una salida en una fecha (AAAA-MM-DD)."""
+    """Seat map of a departure on a date (YYYY-MM-DD)."""
     try:
         return purchases.get_seat_map(schedule_id, require_date(date))
     except purchases.PurchaseError as error:
         raise to_http_error(error)
 
 
-@router.post("/purchases", status_code=201, summary="🔒 Aparta los asientos por 15 minutos")
+@router.post("/purchases", status_code=201, summary="🔒 Holds the seats for 15 minutes")
 def create_purchase(request: PurchaseRequest, user: dict = Depends(get_current_user)):
-    """🔒 Aparta los asientos (un pasajero por asiento). Si el usuario ya tenía una compra
-    sin pagar para este mismo viaje, esa se cancela y se reemplaza por esta."""
+    """🔒 Holds the seats (one passenger per seat). If the user already had an unpaid
+    purchase for this same trip, it is cancelled and replaced by this one."""
     try:
         result = purchases.reserve_seats(
             user["id"],
@@ -60,10 +60,10 @@ def create_purchase(request: PurchaseRequest, user: dict = Depends(get_current_u
     return result
 
 
-@router.post("/purchases/{payment_id}/pay", summary="🔒 Prepara el pago embebido de Stripe")
+@router.post("/purchases/{payment_id}/pay", summary="🔒 Prepares the embedded Stripe payment")
 def pay(payment_id: int, user: dict = Depends(get_current_user)):
-    """🔒 Devuelve el client_secret para dibujar el pago de Stripe dentro de la página.
-    Si la compra ya tiene un pago abierto, lo reutiliza en vez de crear otro."""
+    """🔒 Returns the client_secret used to draw the Stripe payment inside the page.
+    If the purchase already has an open payment, it is reused instead of creating another."""
     try:
         details = purchases.get_payment_details(user["id"], payment_id)
         previous_session_id = details["stripe_session_id"]
@@ -84,15 +84,15 @@ def pay(payment_id: int, user: dict = Depends(get_current_user)):
     except purchases.PurchaseError as error:
         raise to_http_error(error)
     except PaymentError as error:
-        print("Error de Stripe:", error)
+        print("Stripe error:", error)
         raise HTTPException(status_code=502, detail="No se pudo abrir el pago. Intenta de nuevo.")
     return {"status": status, "client_secret": session["client_secret"], "ui_mode": session["ui_mode"]}
 
 
-@router.get("/purchases/confirm", summary="🔒 Confirma con Stripe que el pago se hizo")
+@router.get("/purchases/confirm", summary="🔒 Confirms with Stripe that the payment went through")
 def confirm(session_id: str, user: dict = Depends(get_current_user)):
-    """🔒 Al terminar el pago, pregunta a Stripe si se hizo y confirma los tiquetes.
-    No se confía en que el usuario volvió a la página: se le pregunta a Stripe."""
+    """🔒 After payment, asks Stripe whether it went through and confirms the tickets.
+    We never trust that the user came back to the page: we ask Stripe."""
     try:
         session = get_checkout_session(session_id)
         if not session["paid"]:
@@ -101,14 +101,14 @@ def confirm(session_id: str, user: dict = Depends(get_current_user)):
     except purchases.PurchaseError as error:
         raise to_http_error(error)
     except PaymentError as error:
-        print("Error de Stripe:", error)
+        print("Stripe error:", error)
         raise HTTPException(status_code=502, detail="No se pudo confirmar el pago con Stripe. Intenta de nuevo.")
     return {"payment_id": session["payment_id"], "status": status}
 
 
-@router.post("/purchases/{payment_id}/cancel", summary="🔒 Cancela una compra sin pagar")
+@router.post("/purchases/{payment_id}/cancel", summary="🔒 Cancels an unpaid purchase")
 def cancel(payment_id: int, user: dict = Depends(get_current_user)):
-    """🔒 Cancela una compra que todavía no se ha pagado y libera los asientos."""
+    """🔒 Cancels a purchase that has not been paid yet and frees its seats."""
     try:
         status, stripe_session_id = purchases.cancel_purchase(user["id"], payment_id)
     except purchases.PurchaseError as error:
@@ -118,7 +118,7 @@ def cancel(payment_id: int, user: dict = Depends(get_current_user)):
     return {"payment_id": payment_id, "status": status}
 
 
-@router.get("/my-tickets", summary="🔒 Historial de compras del usuario")
+@router.get("/my-tickets", summary="🔒 The user's purchase history")
 def my_tickets(order: Literal["newest", "oldest"] = purchases.NEWEST_FIRST, user: dict = Depends(get_current_user)):
-    """🔒 Historial de compras del usuario (lista doblemente enlazada)."""
+    """🔒 The user's purchase history (doubly linked list)."""
     return purchases.get_my_tickets(user["id"], order)

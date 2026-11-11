@@ -1,18 +1,18 @@
-"""Compra de pasajes: asientos, reservas, vencimientos e historial.
+"""Ticket purchase: seats, reservations, expirations and history.
 
-Aquí trabajan juntas las 5 estructuras de la compra:
-- HashTable: mapa de asientos de una salida (número -> estado), consulta O(1).
-- Stack: registro para deshacer cuando se reservan varios asientos y uno falla.
-- Queue: reservas pendientes por orden de llegada, para vencer las viejas.
-- StateMachine: decide qué cambios de estado son válidos para un tiquete.
-- DoublyLinkedList: historial de compras del usuario, recorrible en los dos sentidos.
+The 5 purchase structures work together here:
+- HashTable: seat map of a departure (number -> status), O(1) lookups.
+- Stack: undo log when several seats are reserved and one of them fails.
+- Queue: pending reservations in arrival order, to expire the old ones.
+- StateMachine: decides which status changes are valid for a ticket.
+- DoublyLinkedList: the user's purchase history, walkable in both directions.
 
-Concurrencia (dos personas pidiendo el último asiento al mismo tiempo):
-1. Al reservar se bloquea la fila de la salida (SELECT ... FOR UPDATE). PostgreSQL
-   pone en fila (cola FIFO) a las demás reservas de esa salida: la segunda espera
-   a que la primera termine y luego ve el asiento ya ocupado.
-2. Como red de seguridad, el índice único unique_seat_per_trip impide que dos
-   tiquetes vivos tengan el mismo asiento en la misma salida y fecha.
+Concurrency (two people asking for the last seat at the same time):
+1. Reserving locks the departure row (SELECT ... FOR UPDATE). PostgreSQL queues
+   (FIFO) the other reservations for that departure: the second one waits for
+   the first to finish and then sees the seat already taken.
+2. As a safety net, the unique index unique_seat_per_trip prevents two live
+   tickets from having the same seat on the same departure and date.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -33,8 +33,8 @@ from structs.state_machine import (
     TransitionError, purchase_state_machine,
 )
 
-RESERVATION_MINUTES = 15   # tiempo para empezar a pagar
-PAYMENT_MINUTES = 45       # tiempo total para terminar de pagar (15 + 30 de Stripe)
+RESERVATION_MINUTES = 15   # time to start paying
+PAYMENT_MINUTES = 45       # total time to finish paying (15 + 30 in Stripe)
 MAX_SEATS_PER_PURCHASE = 5
 
 FREE = "FREE"
@@ -59,11 +59,11 @@ class PurchaseError(Exception):
 
 
 # ------------------------------------------------------------------
-# Lógica pura con las estructuras (no toca la base de datos)
+# Pure logic with the structures (does not touch the database)
 # ------------------------------------------------------------------
 
 def build_seat_map(capacity, taken_numbers):
-    """Crea la tabla hash con todos los asientos FREE y marca los ocupados."""
+    """Builds the hash table with every seat FREE and marks the taken ones."""
     seat_map = HashTable(capacity * 2)
     for number in range(1, capacity + 1):
         seat_map.put(number, FREE)
@@ -73,13 +73,13 @@ def build_seat_map(capacity, taken_numbers):
 
 
 def seats_in_order(seat_map, capacity):
-    """Pasa el mapa a la lista ordenada que se envía al frontend."""
+    """Turns the map into the sorted list sent to the frontend."""
     return [{"number": n, "status": seat_map.get(n)} for n in range(1, capacity + 1)]
 
 
 def hold_seats(seat_map, numbers):
-    """Aparta cada asiento pedido. Si alguno ya está ocupado, deshace los anteriores
-    con la pila (en orden inverso) y devuelve ese número; si todo sale bien, None."""
+    """Holds each requested seat. If one is already taken, it undoes the previous ones
+    with the stack (in reverse order) and returns that number; if all goes well, None."""
     undo_log = Stack()
     for number in numbers:
         if seat_map.get(number) != FREE:
@@ -92,9 +92,9 @@ def hold_seats(seat_map, numbers):
 
 
 def find_expired(pending_tickets, now):
-    """Recibe (id, estado, creado) ordenados del más viejo al más nuevo y devuelve
-    los ids que ya vencieron. Usa una cola por cada tipo de espera: como están en
-    orden de llegada, basta mirar el frente y parar en el primero que sigue a tiempo."""
+    """Receives (id, status, created) sorted from oldest to newest and returns the
+    ids that have expired. It uses one queue per kind of wait: since they are in
+    arrival order, it only looks at the front and stops at the first one still on time."""
     reserved_queue, paying_queue = Queue(), Queue()
     for ticket in pending_tickets:
         (reserved_queue if ticket[1] == RESERVED else paying_queue).enqueue(ticket)
@@ -110,9 +110,9 @@ def find_expired(pending_tickets, now):
 
 
 def purchase_history(purchases, order=NEWEST_FIRST):
-    """Arma la lista doble (más reciente en la cabeza) y la recorre en el sentido pedido."""
+    """Builds the doubly linked list (newest at the head) and walks it in the requested direction."""
     history = DoublyLinkedList()
-    for purchase in purchases:  # llegan de la más reciente a la más antigua
+    for purchase in purchases:  # they arrive from newest to oldest
         history.append(purchase)
     result = []
     if order == OLDEST_FIRST:
@@ -123,7 +123,7 @@ def purchase_history(purchases, order=NEWEST_FIRST):
 
 
 def next_status(current_status, event):
-    """Pregunta a la máquina de estados a qué estado se pasa; si no se puede, PurchaseError."""
+    """Asks the state machine for the next status; raises PurchaseError if not allowed."""
     try:
         return purchase_state_machine(current_status).trigger(event)
     except TransitionError as error:
@@ -131,7 +131,7 @@ def next_status(current_status, event):
 
 
 def expiration_time(status, created_at):
-    """Hora de Colombia hasta la que se guarda una reserva sin pagar (None si no aplica)."""
+    """Colombian time until which an unpaid reservation is held (None if not applicable)."""
     minutes = {RESERVED: RESERVATION_MINUTES, PAYING: PAYMENT_MINUTES}.get(status)
     if minutes is None:
         return None
@@ -139,7 +139,7 @@ def expiration_time(status, created_at):
 
 
 def clean_passengers(passengers):
-    """Valida los pasajeros (uno por asiento) y devuelve [(asiento, nombre, documento)]."""
+    """Validates the passengers (one per seat) and returns [(seat, name, document)]."""
     if not passengers:
         raise PurchaseError("Elige al menos un asiento")
     if len(passengers) > MAX_SEATS_PER_PURCHASE:
@@ -163,7 +163,7 @@ def clean_passengers(passengers):
 
 
 # ------------------------------------------------------------------
-# Consultas
+# Queries
 # ------------------------------------------------------------------
 
 DEPARTURE_QUERY = """
@@ -207,7 +207,7 @@ def _get_departure(cursor, schedule_id, lock=False):
     if row is None:
         raise PurchaseError("Esa salida no existe", 404)
     if lock:
-        # Pone en fila a las demás reservas de esta salida hasta que esta termine
+        # Queues the other reservations for this departure until this one finishes
         cursor.execute("SELECT id FROM schedules WHERE id = %s FOR UPDATE;", (schedule_id,))
     return {
         "schedule_id": row[0],
@@ -246,8 +246,8 @@ def get_seat_map(schedule_id, travel_date):
 
 
 def _cancel_pending_purchases_for_trip(cursor, user_id, schedule_id, travel_date):
-    """Si el usuario ya tenía una compra sin pagar para este mismo viaje, la cancela
-    para que nunca queden dos pagos en proceso. Devuelve las sesiones de Stripe a cerrar."""
+    """If the user already had an unpaid purchase for this same trip, cancels it so
+    there are never two payments in progress. Returns the Stripe sessions to close."""
     cursor.execute(
         """SELECT DISTINCT t.payment_id, t.status, pm.stripe_session_id
            FROM tickets t
@@ -268,8 +268,8 @@ def _cancel_pending_purchases_for_trip(cursor, user_id, schedule_id, travel_date
 
 
 def reserve_seats(user_id, schedule_id, travel_date, passengers):
-    """Aparta los asientos (un pasajero por asiento) por RESERVATION_MINUTES minutos.
-    passengers: lista de {"seat", "name", "document"}."""
+    """Holds the seats (one passenger per seat) for RESERVATION_MINUTES minutes.
+    passengers: list of {"seat", "name", "document"}."""
     cleaned = clean_passengers(passengers)
     numbers = [seat for seat, _, _ in cleaned]
 
@@ -318,7 +318,7 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
                     (schedule_id, travel_date, status, passenger_id, seat_ids.get(number), payment_id),
                 )
         except psycopg.errors.UniqueViolation:
-            # otra persona apartó el asiento en el mismo instante: el índice único lo impidió
+            # someone else took the seat at the same instant: the unique index stopped it
             raise PurchaseError("Uno de los asientos acaba de ser ocupado. Elige otro", 409)
 
     return {
@@ -348,7 +348,7 @@ def _tickets_of_payment(cursor, user_id, payment_id):
 
 
 def _apply_event_to_payment(cursor, user_id, payment_id, event):
-    """Aplica el evento a todos los tiquetes de una compra y devuelve el estado nuevo."""
+    """Applies the event to every ticket of a purchase and returns the new status."""
     new_status = None
     for _, status in _tickets_of_payment(cursor, user_id, payment_id):
         new_status = next_status(status, event)
@@ -357,7 +357,7 @@ def _apply_event_to_payment(cursor, user_id, payment_id, event):
 
 
 def get_payment_details(user_id, payment_id):
-    """Revisa que la compra se pueda pagar y devuelve lo que Stripe necesita."""
+    """Checks that the purchase can be paid and returns what Stripe needs."""
     with connect() as connection, connection.cursor() as cursor:
         _expire_old_reservations(cursor)
         rows = _tickets_of_payment(cursor, user_id, payment_id)
@@ -397,14 +397,14 @@ def mark_as_paid(user_id, payment_id):
     with connect() as connection, connection.cursor() as cursor:
         rows = _tickets_of_payment(cursor, user_id, payment_id)
         if all(status == PAID for _, status in rows):
-            return PAID  # ya estaba confirmado (por ejemplo, el usuario recargó la página)
+            return PAID  # it was already confirmed (for example, the user reloaded the page)
         status = _apply_event_to_payment(cursor, user_id, payment_id, CONFIRM_PAYMENT)
         cursor.execute("UPDATE payments SET status = 'PAID' WHERE id = %s;", (payment_id,))
     return status
 
 
 def cancel_purchase(user_id, payment_id):
-    """Cancela una compra sin pagar. Devuelve (estado, sesión de Stripe a cerrar o None)."""
+    """Cancels an unpaid purchase. Returns (status, Stripe session to close or None)."""
     with connect() as connection, connection.cursor() as cursor:
         status = _apply_event_to_payment(cursor, user_id, payment_id, CANCEL)
         cursor.execute(
@@ -433,7 +433,7 @@ MY_TICKETS_QUERY = """
 
 
 def get_my_tickets(user_id, order=NEWEST_FIRST):
-    """Historial de compras del usuario: cada compra con sus pasajeros y asientos."""
+    """The user's purchase history: each purchase with its passengers and seats."""
     with connect() as connection, connection.cursor() as cursor:
         _expire_old_reservations(cursor)
         cursor.execute(MY_TICKETS_QUERY, (user_id,))
@@ -471,7 +471,7 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
 
 
 def count_taken_seats_by_schedule(travel_date):
-    """Tabla hash schedule_id -> asientos ya vendidos o apartados ese día."""
+    """Hash table schedule_id -> seats already sold or held that day."""
     taken_by_schedule = HashTable()
     with connect() as connection, connection.cursor() as cursor:
         _expire_old_reservations(cursor)

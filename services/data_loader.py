@@ -1,4 +1,4 @@
-"""Carga los datos de la base en las estructuras: grafo, árbol AVL y árbol n-ario."""
+"""Loads database data into the structures: graph, AVL tree and n-ary tree."""
 
 from services.database import connect
 from structs.avl_tree import AVLTree, minutes_to_text, time_to_minutes
@@ -37,7 +37,7 @@ HIERARCHY_QUERY = """
 
 
 def load_graph():
-    """Grafo de rutas: cada municipio es un vértice y cada ruta una arista."""
+    """Route graph: each town is a vertex and each route an edge."""
     graph = Graph()
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(ROUTES_QUERY)
@@ -47,7 +47,7 @@ def load_graph():
 
 
 def load_schedules(destination):
-    """Árbol AVL con las salidas hacia un destino, ordenadas por hora."""
+    """AVL tree with the departures to a destination, ordered by time."""
     tree = AVLTree()
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(SCHEDULES_QUERY, (destination,))
@@ -57,7 +57,7 @@ def load_schedules(destination):
 
 
 def load_terminal_hierarchy():
-    """Árbol n-ario: Terminal → empresa → ruta → salida."""
+    """N-ary tree: Terminal → company → route → departure."""
     tree = NaryTree(TERMINAL_NAME)
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(HIERARCHY_QUERY)

@@ -1,4 +1,4 @@
-"""Consultas a la tabla users."""
+"""Queries on the users table."""
 
 import psycopg
 
@@ -10,7 +10,7 @@ def _user_from_row(row):
 
 
 def create_user(name, email, password_hash):
-    """Guarda un usuario nuevo. Devuelve None si el correo ya está registrado."""
+    """Saves a new user. Returns None if the email is already registered."""
     try:
         with connect() as connection, connection.cursor() as cursor:
             cursor.execute(
@@ -24,7 +24,7 @@ def create_user(name, email, password_hash):
 
 
 def find_user_by_email(email):
-    """Devuelve el usuario con su password_hash, o None si no existe."""
+    """Returns the user with its password_hash, or None if it does not exist."""
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s;", (email,))
         row = cursor.fetchone()
@@ -43,7 +43,7 @@ def find_user_by_id(user_id):
 
 
 def upsert_user(name, email, password_hash):
-    """Crea el usuario si no existe, o le pone esta contraseña si ya existe."""
+    """Creates the user if missing, or sets this password if it already exists."""
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(
             "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) "

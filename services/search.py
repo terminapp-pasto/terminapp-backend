@@ -1,4 +1,4 @@
-"""Motor de búsqueda de salidas: grafo → árbol AVL → montículo de mínimos."""
+"""Departure search engine: graph → AVL tree → min-heap."""
 
 from services.data_loader import load_graph, load_schedules
 from services.dates import now_in_colombia, today_in_colombia
@@ -12,12 +12,12 @@ MINUTES_PER_DAY = 1440
 
 
 def search_departures(origin, destination, start_minutes=0, sort_by=SORT_BY_TIME, travel_date=None):
-    """Salidas de un día (hoy si no se dice) desde una hora, con los cupos libres reales.
-    Devuelve None si el origen o el destino no existen."""
+    """Departures of a day (today by default) from a given time, with the real free seats.
+    Returns None if the origin or the destination do not exist."""
     travel_date = travel_date or today_in_colombia()
     if travel_date == today_in_colombia():
         now = now_in_colombia()
-        start_minutes = max(start_minutes, now.hour * 60 + now.minute + 1)  # no mostrar buses que ya salieron
+        start_minutes = max(start_minutes, now.hour * 60 + now.minute + 1)  # do not show buses that already left
 
     graph = load_graph()
     origin_vertex = graph.find_vertex(origin)
@@ -33,7 +33,7 @@ def search_departures(origin, destination, start_minutes=0, sort_by=SORT_BY_TIME
     def add_to_heap(node):
         if origin_vertex.find_edge(node.route_id) is None:
             return
-        # ordenar por precio y, a igual precio, por hora
+        # sort by price and, for equal prices, by time
         key = node.price * MINUTES_PER_DAY + node.minutes if sort_by == SORT_BY_PRICE else node.minutes
         heap.insert(key, node)
 

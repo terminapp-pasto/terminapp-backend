@@ -1,4 +1,4 @@
-"""Rutas de la cuenta: registro, inicio de sesión y datos del usuario."""
+"""Account routes: register, login and user data."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -12,11 +12,11 @@ from services.validation import (
     is_valid_email, is_valid_name, is_valid_password, normalize_spaces,
 )
 
-router = APIRouter(tags=["Cuenta"])
+router = APIRouter(tags=["Account"])
 
 
 class RegisterRequest(BaseModel):
-    # max_length aquí corta textos gigantes antes de procesarlos; las reglas finas van abajo
+    # max_length here stops huge texts before processing them; the detailed rules come below
     name: str = Field(..., max_length=NAME_MAX_LENGTH * 2)
     email: str = Field(..., max_length=EMAIL_MAX_LENGTH * 2)
     password: str = Field(..., max_length=PASSWORD_MAX_LENGTH * 2)
@@ -32,7 +32,7 @@ def build_session_response(user):
     return {"token": create_token(user["id"], user["name"]), "user": public_user}
 
 
-@router.post("/register", status_code=201, summary="Crea una cuenta y devuelve un token")
+@router.post("/register", status_code=201, summary="Creates an account and returns a token")
 def register(request: RegisterRequest):
     name = normalize_spaces(request.name)
     email = request.email.strip().lower()
@@ -50,15 +50,15 @@ def register(request: RegisterRequest):
     return build_session_response(user)
 
 
-@router.post("/login", summary="Inicia sesión y devuelve un token JWT de 24 horas")
+@router.post("/login", summary="Logs in and returns a 24-hour JWT token")
 def login(request: LoginRequest):
     user = find_user_by_email(request.email.strip().lower())
-    # El mismo mensaje para correo o contraseña incorrectos, para no revelar qué correos existen
+    # Same message for a wrong email or password, so we never reveal which emails exist
     if user is None or not verify_password(request.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
     return build_session_response(user)
 
 
-@router.get("/me", summary="🔒 Datos del usuario dueño del token")
+@router.get("/me", summary="🔒 Data of the user who owns the token")
 def me(user: dict = Depends(get_current_user)):
     return user

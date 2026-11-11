@@ -1,7 +1,7 @@
-"""Punto de entrada de la API de TerminAPP.
+"""Entry point of the TerminAPP API.
 
-Solo arma la aplicación: las rutas viven en la carpeta routes/, la lógica en
-services/ y las estructuras de datos en structs/.
+It only assembles the application: routes live in routes/, business logic in
+services/ and the data structures in structs/.
 """
 
 from contextlib import asynccontextmanager
@@ -22,7 +22,7 @@ INVALID_DATA_MESSAGE = "Algunos datos no son válidos o son demasiado largos. Re
 
 
 def create_test_account():
-    """Crea la cuenta de prueba del profesor, solo si sus datos están en el entorno."""
+    """Creates the professor's test account, only if its data is in the environment."""
     if not (config.TEST_ACCOUNT_EMAIL and config.TEST_ACCOUNT_PASSWORD):
         return
     try:
@@ -32,8 +32,8 @@ def create_test_account():
             encrypt_password(config.TEST_ACCOUNT_PASSWORD),
         )
     except psycopg.Error as error:
-        # Si la base de datos no responde, la API arranca igual
-        print(f"No se pudo crear la cuenta de prueba: {error}")
+        # If the database does not answer, the API starts anyway
+        print(f"Could not create the test account: {error}")
 
 
 @asynccontextmanager
@@ -47,9 +47,9 @@ app = FastAPI(
     title="TerminAPP Backend",
     version=API_VERSION,
     description=(
-        "API de TerminAPP: búsqueda de pasajes desde la Terminal de Transportes de Pasto, "
-        "chat con IA, cuentas de usuario y compra con pago de prueba en Stripe. "
-        "Las rutas con 🔒 necesitan el token del inicio de sesión: usa el botón **Authorize**."
+        "TerminAPP API: bus ticket search from the Pasto bus terminal, AI chat, "
+        "user accounts and purchases with Stripe test payments. "
+        "Routes marked 🔒 need the login token: use the **Authorize** button."
     ),
 )
 app.add_middleware(
@@ -62,7 +62,7 @@ app.add_middleware(
 
 @app.exception_handler(RequestValidationError)
 async def handle_invalid_request(_request: Request, error: RequestValidationError):
-    """Datos mal formados o demasiado largos: un mensaje claro en vez de un error técnico."""
+    """Malformed or too long data: a clear message instead of a technical error."""
     return JSONResponse(status_code=400, content={"detail": INVALID_DATA_MESSAGE})
 
 

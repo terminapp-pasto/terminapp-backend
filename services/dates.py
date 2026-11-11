@@ -1,13 +1,13 @@
-"""Fechas y horas de Colombia, y reglas de qué días se venden pasajes."""
+"""Colombian dates and times, and the rules for which days tickets are sold."""
 
 from datetime import date, datetime, timedelta, timezone
 
-COLOMBIA_TIMEZONE = timezone(timedelta(hours=-5))  # Colombia no tiene horario de verano
-SALES_WINDOW_DAYS = 60   # se venden pasajes hasta 60 días adelante
+COLOMBIA_TIMEZONE = timezone(timedelta(hours=-5))  # Colombia has no daylight saving time
+SALES_WINDOW_DAYS = 60   # tickets are sold up to 60 days ahead
 
 
 class InvalidDateError(Exception):
-    """La fecha no tiene el formato correcto o no está en la ventana de venta."""
+    """The date has the wrong format or is outside the sales window."""
 
 
 def now_in_colombia():
@@ -19,7 +19,7 @@ def today_in_colombia():
 
 
 def parse_date(text):
-    """Lee una fecha AAAA-MM-DD."""
+    """Reads a YYYY-MM-DD date."""
     try:
         return date.fromisoformat(text)
     except (TypeError, ValueError):
@@ -27,7 +27,7 @@ def parse_date(text):
 
 
 def parse_travel_date(text):
-    """Lee una fecha AAAA-MM-DD (vacía = hoy) y revisa que se vendan pasajes para ese día."""
+    """Reads a YYYY-MM-DD date (empty = today) and checks that tickets are sold for that day."""
     today = today_in_colombia()
     travel_date = today if not text else parse_date(text)
     if travel_date < today:

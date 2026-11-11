@@ -1,4 +1,4 @@
--- Script 1: tablas del catálogo de viajes (empresas, municipios, rutas y salidas).
+-- Script 1: trip catalog tables (companies, towns, routes and departures).
 
 CREATE TABLE companies (
     id SERIAL PRIMARY KEY,

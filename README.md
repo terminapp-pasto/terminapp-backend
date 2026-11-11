@@ -1,105 +1,109 @@
 # TerminAPP - Backend
 
-Plataforma para consultar y comprar pasajes de la Terminal de Transportes de Pasto por medio de un chat.
-Proyecto final de Estructuras de Datos - Universidad Cooperativa de Colombia, sede Pasto.
+A chat-based platform to look up and buy bus tickets from the Pasto bus terminal (Terminal de Transportes de Pasto, Colombia).
+Final project for Data Structures (Estructuras de Datos) - Universidad Cooperativa de Colombia, Pasto campus.
 
-## Caso de estudio
+## Case study
 
-**El problema.** Para saber qué buses salen de la Terminal de Transportes de Pasto, a qué hora y cuánto cuestan, hoy una persona tiene que ir hasta la terminal, llamar a cada empresa o revisar varias páginas de venta que no siempre coinciden entre sí. La página oficial de la terminal publica las empresas y los destinos, pero no los horarios ni las tarifas en un solo lugar.
+**The problem.** To find out which buses leave the Pasto bus terminal, at what time and for how much, people today have to go to the terminal, call each company, or check several ticket websites that do not always agree. The terminal's official website lists the companies and destinations, but not the schedules or fares in one place.
 
-**El usuario.** Personas que viajan desde Pasto hacia municipios de Nariño y hacia ciudades como Cali, Mocoa o Bogotá: estudiantes, trabajadores y familias que necesitan comparar opciones rápido y que no siempre tienen experiencia usando aplicaciones.
+**The user.** People travelling from Pasto to towns in Nariño and to cities such as Cali, Mocoa or Bogotá: students, workers and families who need to compare options quickly and are not always used to apps.
 
-**Por qué la IA ayuda.** El usuario escribe como habla, por ejemplo "quiero ir a Cali esta noche, lo más barato", y la IA convierte esa frase en una búsqueda concreta: destino, hora y forma de ordenar. La búsqueda la resuelven las estructuras de datos del backend, y la IA devuelve el resultado en lenguaje natural y guía la compra. Así nadie tiene que aprender a usar filtros ni formularios.
+**Why AI helps.** Users write the way they talk, for example "quiero ir a Cali esta noche, lo más barato", and the AI turns that sentence into a concrete search: destination, time and sort order. The search itself is solved by the backend data structures, and the AI returns the result in natural language and guides the purchase. Nobody has to learn filters or forms.
 
-## Integrantes
+## Team
 - Juan David Moreno
 - Felipe Alejandro Cerón
 
 ## URLs
 - Backend: https://terminapp-backend.onrender.com
 - Frontend: https://terminapp-frontend.vercel.app
-- Repositorio frontend: https://github.com/terminapp-pasto/terminapp-frontend
+- Frontend repository: https://github.com/terminapp-pasto/terminapp-frontend
 
-## Tecnologías
-Python, FastAPI, PostgreSQL (Neon), Gemini (IA), Render.
+## Technologies
+Python, FastAPI, PostgreSQL (Neon), Gemini (AI), Stripe (test mode), Render.
 
-## Organización del código
+## Code layout
 
 ```
-config.py            todas las variables de entorno (nada queda quemado en el código)
-main.py              arma la aplicación y une las rutas
-routes/              rutas HTTP: system, search, chat, auth, purchases
-services/            lógica: búsqueda, compra, usuarios, fechas, validación, base de datos
-structs/             las 10 estructuras de datos hechas desde cero
-authentication/      utilities.py (cifrar y verificar contraseñas) y tokens.py (JWT)
-ai/                  gemini.py (proveedor), tools.py (herramientas), orchestrator.py (el chat)
-payments/            stripe_client.py (pago embebido de Stripe en modo prueba)
-db/                  scripts SQL 01 a 05
-tests/               pruebas automáticas
+config.py            every environment variable (nothing is hardcoded)
+main.py              assembles the application and plugs in the routes
+routes/              HTTP routes: system, search, chat, auth, purchases
+services/            business logic: search, purchases, users, dates, validation, database
+structs/             the 10 data structures built from scratch
+authentication/      utilities.py (encrypt and verify passwords) and tokens.py (JWT)
+ai/                  gemini.py (provider), tools.py (tools), orchestrator.py (the chat)
+payments/            stripe_client.py (embedded Stripe payment in test mode)
+db/                  SQL scripts 01 to 05
+tests/               automated tests
 ```
+
+All code (folders, files, classes, functions, variables, comments, tables and columns) is in English.
+Only the text the end user reads (the interface, error messages and the assistant's replies) is in Spanish,
+because TerminAPP is used by travellers in Colombia.
 
 ## Endpoints
-| Método | Ruta | Qué hace |
+| Method | Route | What it does |
 |---|---|---|
-| GET | `/health` | Comprueba la conexión con la base de datos |
-| GET | `/search?destination=Cali&date=2026-10-24&from_time=18:00&sort_by=price` | Busca salidas desde Pasto para un día, con los cupos libres de ese día |
-| GET | `/destinations` | Lista los destinos con rutas desde Pasto |
-| POST | `/chat` | Recibe la conversación (`{"messages": [{"role": "user", "text": "..."}]}`) y responde con la IA y las salidas encontradas |
-| POST | `/register` | Crea una cuenta (la contraseña se guarda cifrada con PBKDF2) y devuelve un token |
-| POST | `/login` | Comprueba correo y contraseña y devuelve un token JWT válido por 24 horas |
-| GET | `/me` | 🔒 Ruta protegida: devuelve el usuario dueño del token (`Authorization: Bearer <token>`) |
-| GET | `/schedules/{id}/seats?date=AAAA-MM-DD` | Mapa de los 40 asientos de una salida en una fecha |
-| POST | `/purchases` | 🔒 Aparta de 1 a 5 asientos por 15 minutos, con los datos de un pasajero por asiento |
-| POST | `/purchases/{payment_id}/pay` | 🔒 Prepara el pago embebido de Stripe; si ya hay uno abierto, lo reutiliza |
-| GET | `/purchases/confirm?session_id=...` | 🔒 Pregunta a Stripe si se pagó y confirma los tiquetes |
-| POST | `/purchases/{payment_id}/cancel` | 🔒 Cancela una compra sin pagar y libera los asientos |
-| GET | `/my-tickets?order=newest` | 🔒 Historial de compras del usuario (`newest` u `oldest`) |
+| GET | `/health` | Checks the database connection |
+| GET | `/search?destination=Cali&date=2026-10-24&from_time=18:00&sort_by=price` | Searches the departures from Pasto on one day, with that day's free seats |
+| GET | `/destinations` | Lists the destinations with routes from Pasto |
+| POST | `/chat` | Receives the conversation (`{"messages": [{"role": "user", "text": "..."}]}`) and answers with the AI and the departures found |
+| POST | `/register` | Creates an account (the password is stored encrypted with PBKDF2) and returns a token |
+| POST | `/login` | Checks email and password and returns a JWT token valid for 24 hours |
+| GET | `/me` | 🔒 Protected route: returns the user who owns the token (`Authorization: Bearer <token>`) |
+| GET | `/schedules/{id}/seats?date=YYYY-MM-DD` | Map of the 40 seats of a departure on a date |
+| POST | `/purchases` | 🔒 Holds 1 to 5 seats for 15 minutes, with one passenger's details per seat |
+| POST | `/purchases/{payment_id}/pay` | 🔒 Prepares the embedded Stripe payment; reuses an open one if it exists |
+| GET | `/purchases/confirm?session_id=...` | 🔒 Asks Stripe whether it was paid and confirms the tickets |
+| POST | `/purchases/{payment_id}/cancel` | 🔒 Cancels an unpaid purchase and frees the seats |
+| GET | `/my-tickets?order=newest` | 🔒 The user's purchase history (`newest` or `oldest`) |
 
-## Reglas de la compra
-- **Un pasajero por asiento.** Si se compran 3 asientos se piden 3 nombres y 3 documentos.
-- **Validación con expresiones regulares** (en el frontend y otra vez en el backend, `services/validation.py`):
-  nombre solo letras y espacios, de 3 a 50 caracteres; documento solo números, de 5 a 12 dígitos;
-  correo de máximo 100 caracteres; contraseña de 8 a 72. Un texto gigante se rechaza antes de llegar a la base de datos.
-- **Dos personas y el último asiento.** Al reservar se bloquea la salida (`SELECT ... FOR UPDATE`): PostgreSQL pone en fila
-  (FIFO) las demás reservas de esa salida, la primera gana y la segunda recibe "El asiento 40 acaba de ser ocupado".
-  Además, el índice único `unique_seat_per_trip` impide que un asiento quede vendido dos veces. La prueba
-  `test_two_people_take_the_last_seat_at_the_same_time` lo demuestra con dos reservas al mismo instante.
-- **Nunca dos pagos en proceso para el mismo viaje.** Si el usuario vuelve atrás y reserva otra vez la misma salida,
-  la compra pendiente anterior se cancela y su sesión de Stripe se cierra. Al pagar, si ya hay una sesión abierta se reutiliza.
-- **El pago se confirma preguntándole a Stripe**, no confiando en que el usuario volvió a la página.
+## Purchase rules
+- **One passenger per seat.** Buying 3 seats asks for 3 names and 3 documents.
+- **Validation with regular expressions** (in the frontend and again in the backend, `services/validation.py`):
+  name only letters and spaces, 3 to 50 characters; document only digits, 5 to 12; email up to 100 characters;
+  password 8 to 72. A huge text is rejected before it reaches the database.
+- **Two people and the last seat.** Reserving locks the departure (`SELECT ... FOR UPDATE`): PostgreSQL queues (FIFO)
+  the other reservations for that departure, the first one wins and the second gets "El asiento 40 acaba de ser ocupado".
+  On top of that, the unique index `unique_seat_per_trip` prevents a seat from being sold twice. The test
+  `test_two_people_take_the_last_seat_at_the_same_time` proves it with two reservations at the same instant.
+- **Never two payments in progress for the same trip.** If the user goes back and reserves the same departure again,
+  the previous pending purchase is cancelled and its Stripe session closed. When paying, an open session is reused.
+- **Payments are confirmed by asking Stripe**, never by trusting that the user came back to the page.
 
-## Cómo correrlo en local
-1. Copiar `.env.example` como `.env` y llenar `DATABASE_URL`, `GEMINI_API_KEY`, `TOKEN_SECRET`, `STRIPE_SECRET_KEY` y `FRONTEND_URL` (nunca se sube a Git).
-2. Activar el entorno: `.\venv\Scripts\Activate.ps1`
-3. Encender el servidor **en el puerto 8001**, para no chocar con otros proyectos que usan el 8000:
+## Running it locally
+1. Copy `.env.example` to `.env` and fill in `DATABASE_URL`, `GEMINI_API_KEY`, `TOKEN_SECRET`, `STRIPE_SECRET_KEY` and `FRONTEND_URL` (never commit it).
+2. Activate the environment: `.\venv\Scripts\Activate.ps1`
+3. Start the server **on port 8001**, so it does not clash with other projects on port 8000:
    ```
    uvicorn main:app --reload --port 8001
    ```
-4. Abrir http://127.0.0.1:8001/docs
+4. Open http://127.0.0.1:8001/docs
 
-## Estructuras de datos
+## Data structures
 
-Las 10 estructuras están hechas desde cero en la carpeta `structs/`, con nodos enlazados propios (sin usar listas ni diccionarios de Python como estructura).
+The 10 structures are built from scratch in `structs/`, with our own linked nodes (no Python lists or dictionaries as the structure).
 
-| # | Estructura | Archivo | Para qué se usa en TerminAPP | Complejidad |
+| # | Structure | File | What it does in TerminAPP | Complexity |
 |---|---|---|---|---|
-| 1 | Grafo dirigido y ponderado (lista de adyacencia) | `graph.py` | Municipios como vértices y rutas como aristas con la duración; responde "¿hay ruta de Pasto a X?" | Buscar vértice O(V), recorrer rutas de un vértice O(grado) |
-| 2 | Matriz con nodos enlazados | `matrix.py` | Tabla de la distancia de edición para corregir destinos mal escritos ("bodota" → Bogotá) y matriz de tiempos entre municipios | Acceso O(f + c); corrección O(n·m·(n+m)) |
-| 3 | Árbol AVL | `avl_tree.py` | Horarios de una ruta ordenados por hora; "desde las 18:00" sin revisar todos | Insertar y buscar O(log n) |
-| 4 | Montículo de mínimos (heap) | `min_heap.py` | Ordena las salidas encontradas por hora o por precio | Insertar y extraer O(log n) |
-| 5 | Árbol n-ario | `nary_tree.py` | Jerarquía terminal → empresas → rutas → horarios | Recorrido O(n) |
-| 6 | Tabla hash con encadenamiento | `hash_table.py` | Mapa de asientos de un bus (número → FREE/TAKEN) y agrupar el historial por compra | Insertar, buscar y eliminar O(1) promedio |
-| 7 | Pila | `stack.py` | Deshacer: si al reservar varios asientos uno ya está ocupado, se liberan los anteriores en orden inverso | Apilar y desapilar O(1) |
-| 8 | Cola | `queue.py` | Reservas pendientes por orden de llegada; las que pasan de 15 minutos sin pagar se vencen | Encolar y desencolar O(1) |
-| 9 | Máquina de estados | `state_machine.py` | Ciclo de vida del tiquete: SELECTING → RESERVED → PAYING → PAID, o CANCELLED / EXPIRED | Transición O(t) |
-| 10 | Lista doblemente enlazada | `doubly_linked_list.py` | Historial de compras, recorrible de las más recientes a las más antiguas y al revés | Agregar y quitar O(1), recorrer O(n) |
+| 1 | Directed weighted graph (adjacency list) | `graph.py` | Towns as vertices and routes as edges weighted by duration; answers "is there a route from Pasto to X?" | Find vertex O(V), walk a vertex's routes O(degree) |
+| 2 | Linked-node matrix | `matrix.py` | Edit distance table to fix misspelled destinations ("bodota" → Bogotá) and travel time matrix between towns | Access O(r + c); correction O(n·m·(n+m)) |
+| 3 | AVL tree | `avl_tree.py` | A route's schedules sorted by time; "from 18:00 on" without checking them all | Insert and search O(log n) |
+| 4 | Min-heap | `min_heap.py` | Sorts the departures found by time or by price | Insert and extract O(log n) |
+| 5 | N-ary tree | `nary_tree.py` | Hierarchy terminal → companies → routes → schedules | Traversal O(n) |
+| 6 | Hash table with chaining | `hash_table.py` | A bus seat map (number → FREE/TAKEN) and grouping the history by purchase | Insert, find and remove O(1) on average |
+| 7 | Stack | `stack.py` | Undo: if one of several seats is already taken, the previous ones are released in reverse order | Push and pop O(1) |
+| 8 | Queue | `queue.py` | Pending reservations in arrival order; those unpaid after 15 minutes expire | Enqueue and dequeue O(1) |
+| 9 | State machine | `state_machine.py` | Ticket life cycle: SELECTING → RESERVED → PAYING → PAID, or CANCELLED / EXPIRED | Transition O(t) |
+| 10 | Doubly linked list | `doubly_linked_list.py` | Purchase history, walkable from newest to oldest and back | Add and remove O(1), traverse O(n) |
 
 ```mermaid
 stateDiagram-v2
     [*] --> SELECTING
     SELECTING --> RESERVED: reserve
     RESERVED --> PAYING: start_payment
-    PAYING --> PAYING: start_payment (retoma el pago abierto)
+    PAYING --> PAYING: start_payment (resumes the open payment)
     PAYING --> PAID: confirm_payment
     RESERVED --> CANCELLED: cancel
     PAYING --> CANCELLED: cancel
@@ -108,48 +112,47 @@ stateDiagram-v2
     PAID --> [*]
 ```
 
-### Pruebas automáticas
+### Automated tests
 
-La carpeta `tests/` tiene 77 pruebas: las 10 estructuras, la autenticación, las fechas, la validación de formularios
-y la compra contra una base de datos real. Las pruebas de la compra no prueban solo el camino feliz: asiento ocupado,
-datos inválidos o gigantes, otro usuario tocando mi compra, cancelar, vencer, pagar dos veces y **dos personas pidiendo
-el último asiento al mismo tiempo**.
+`tests/` has 77 tests: the 10 structures, authentication, dates, form validation and purchases against a real
+database. The purchase tests cover more than the happy path: taken seat, invalid or huge data, another user touching
+my purchase, cancelling, expiring, paying twice and **two people asking for the last seat at the same time**.
 
-Se corren con el entorno activado:
+Run them with the environment activated:
 
 ```
 python -m unittest discover -s tests -v
 ```
 
-Las 11 pruebas de la compra necesitan una base **vacía y desechable** (por ejemplo una rama de Neon llamada `pruebas`),
-porque borran y vuelven a crear las tablas. Sin esa variable se saltan (salen como `skipped`):
+The 11 purchase tests need an **empty, disposable** database (for example a Neon branch), because they drop and
+recreate the tables. Without that variable they are skipped:
 
 ```
-$env:TEST_DATABASE_URL="postgresql://...rama-de-pruebas..."
+$env:TEST_DATABASE_URL="postgresql://...test-branch..."
 python -m unittest tests.test_purchases_database -v
 ```
 
-Si todo está bien, al final sale `OK`.
+If everything is fine, the last line says `OK`.
 
-## Base de datos
+## Database
 
-Diagrama entidad-relación de las 12 tablas en PostgreSQL (nombres en inglés). Una base nueva se crea con los scripts `db/01` a `db/04`; una base que ya existía en español se pasa a inglés, sin perder datos, con `db/05_translate_to_english.sql`. Las 5 primeras sostienen la búsqueda; las demás, la autenticación, la compra, el pago y el chat con la IA.
+Entity-relationship diagram of the 12 PostgreSQL tables. A new database is created with scripts `db/01` to `db/04`; a database that already existed in Spanish is translated to English, without losing data, with `db/05_translate_to_english.sql`. The first 5 tables support the search; the rest support authentication, purchases, payments and the AI chat.
 
 ```mermaid
 erDiagram
-    COMPANIES ||--o{ ROUTES : "opera"
-    COMPANIES ||--o{ BUSES : "tiene"
-    DESTINATIONS ||--o{ ROUTES : "es origen de"
-    DESTINATIONS ||--o{ ROUTES : "es destino de"
-    ROUTES ||--o{ SCHEDULES : "tiene"
-    SCHEDULES ||--o{ TICKETS : "se vende en"
-    BUSES ||--o{ SEATS : "tiene"
-    SEATS ||--o{ TICKETS : "se asigna en"
-    USERS ||--o{ PASSENGERS : "registra"
-    PASSENGERS ||--o{ TICKETS : "viaja con"
-    PAYMENTS ||--o{ TICKETS : "cubre"
-    USERS ||--o{ CONVERSATIONS : "inicia"
-    CONVERSATIONS ||--o{ MESSAGES : "contiene"
+    COMPANIES ||--o{ ROUTES : "operates"
+    COMPANIES ||--o{ BUSES : "has"
+    DESTINATIONS ||--o{ ROUTES : "is origin of"
+    DESTINATIONS ||--o{ ROUTES : "is destination of"
+    ROUTES ||--o{ SCHEDULES : "has"
+    SCHEDULES ||--o{ TICKETS : "is sold as"
+    BUSES ||--o{ SEATS : "has"
+    SEATS ||--o{ TICKETS : "is assigned to"
+    USERS ||--o{ PASSENGERS : "registers"
+    PASSENGERS ||--o{ TICKETS : "travels on"
+    PAYMENTS ||--o{ TICKETS : "covers"
+    USERS ||--o{ CONVERSATIONS : "starts"
+    CONVERSATIONS ||--o{ MESSAGES : "contains"
 
     COMPANIES {
         int id PK
@@ -227,45 +230,45 @@ erDiagram
         timestamptz created_at
     }
 ```
-## Arquitectura
+## Architecture
 
-TerminAPP tiene cuatro capas. El frontend solo habla con el backend, y el backend es el único que habla con la base de datos, con la IA y con Stripe. Las claves viven en variables de entorno del backend, nunca en el frontend ni en Git.
+TerminAPP has four layers. The frontend only talks to the backend, and the backend is the only one that talks to the database, the AI and Stripe. Keys live in the backend environment variables, never in the frontend or in Git.
 
 ```mermaid
 flowchart LR
-    U["Usuario<br/>navegador o celular"]
+    U["User<br/>browser or phone"]
     F["Frontend<br/>React + Vite<br/>Vercel"]
     B["Backend<br/>Python + FastAPI<br/>Render"]
-    BD[("Base de datos<br/>PostgreSQL<br/>Neon")]
-    IA["IA<br/>API del modelo de lenguaje"]
-    S["Stripe<br/>pagos en modo prueba"]
+    DB[("Database<br/>PostgreSQL<br/>Neon")]
+    AI["AI<br/>Gemini API"]
+    S["Stripe<br/>test payments"]
 
-    U -->|escribe en el chat| F
+    U -->|types in the chat| F
     F -->|HTTP + JSON| B
-    B -->|SQL| BD
-    B -->|HTTPS + API key| IA
-    B -->|sesion de pago embebida| S
+    B -->|SQL| DB
+    B -->|HTTPS + API key| AI
+    B -->|embedded payment session| S
 ```
 
-### Recorrido de una petición
+### How a request flows
 
 ```mermaid
 sequenceDiagram
-    actor U as Usuario
+    actor U as User
     participant F as Frontend
     participant B as Backend
-    participant IA as IA
-    participant BD as Base de datos
+    participant AI as AI
+    participant DB as Database
 
     U->>F: Quiero ir a Cali esta noche, lo mas barato
     F->>B: POST /chat
-    B->>IA: mensaje y herramientas disponibles
-    IA-->>B: usar search_tickets con destination Cali
-    B->>BD: consulta de rutas y horarios
-    BD-->>B: filas
-    Note over B: El grafo valida la ruta, el AVL filtra por hora y el heap ordena por precio
-    B->>IA: resultados de la busqueda
-    IA-->>B: respuesta en lenguaje natural
-    B-->>F: JSON con la respuesta
-    F-->>U: muestra las opciones
+    B->>AI: message and available tools
+    AI-->>B: use search_tickets with destination Cali
+    B->>DB: routes and schedules query
+    DB-->>B: rows
+    Note over B: The graph checks the route, the AVL filters by time and the heap sorts by price
+    B->>AI: search results
+    AI-->>B: natural language answer
+    B-->>F: JSON with the answer
+    F-->>U: shows the options
 ```
