@@ -1,9 +1,8 @@
-"""Pila (LIFO) con nodos enlazados.
+"""Stack (LIFO) built from linked nodes.
 
-El último que entra es el primero que sale. En TerminAPP funciona como
-registro para deshacer: al reservar varios asientos se apila cada uno; si
-alguno ya estaba ocupado, se desapilan y se liberan en orden inverso, para que
-no quede una compra a medias.
+Last in, first out. In TerminAPP it works as an undo log: when several seats
+are reserved each one is pushed; if one of them was already taken, they are
+popped and released in reverse order, so no purchase is left half done.
 """
 
 
@@ -22,14 +21,14 @@ class Stack:
         return self.top is None
 
     def push(self, data):
-        """Pone encima. O(1)."""
+        """Puts on top. O(1)."""
         new_node = StackNode(data)
         new_node.below = self.top
         self.top = new_node
         self.size += 1
 
     def pop(self):
-        """Saca y devuelve el de encima. O(1)."""
+        """Removes and returns the top item. O(1)."""
         if self.top is None:
             return None
         data = self.top.data

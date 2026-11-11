@@ -1,4 +1,4 @@
-"""Pruebas de la tabla hash con encadenamiento (structs/hash_table.py)."""
+"""Tests for the chained hash table (structs/hash_table.py)."""
 import random
 import unittest
 
@@ -15,8 +15,8 @@ class HashTableTest(unittest.TestCase):
         self.assertEqual(table.get(99, "NO"), "NO")
 
     def test_collisions(self):
-        table = HashTable(2)  # pocas cubetas a propósito
-        for key in ("abc", "cab", "bca"):  # mismas letras, distintas claves
+        table = HashTable(2)  # few buckets on purpose
+        for key in ("abc", "cab", "bca"):  # same letters, different keys
             table.put(key, key.upper())
         for key in ("abc", "cab", "bca"):
             self.assertEqual(table.get(key), key.upper())

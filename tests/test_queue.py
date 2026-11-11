@@ -1,4 +1,4 @@
-"""Pruebas de la cola (structs/queue.py)."""
+"""Tests for the queue (structs/queue.py)."""
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -28,9 +28,9 @@ class QueueTest(unittest.TestCase):
         minutes_ago = lambda minutes: now - timedelta(minutes=minutes)
         pending = [
             (1, "RESERVED", minutes_ago(50)),
-            (2, "PAYING", minutes_ago(46)),    # más de 45: vence
-            (3, "RESERVED", minutes_ago(20)),  # más de 15: vence
-            (4, "PAYING", minutes_ago(30)),    # todavía puede pagar
+            (2, "PAYING", minutes_ago(46)),    # more than 45: expires
+            (3, "RESERVED", minutes_ago(20)),  # more than 15: expires
+            (4, "PAYING", minutes_ago(30)),    # can still pay
             (5, "RESERVED", minutes_ago(5)),
         ]
         self.assertEqual(sorted(find_expired(pending, now)), [1, 2, 3])

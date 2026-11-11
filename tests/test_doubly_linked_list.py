@@ -1,4 +1,4 @@
-"""Pruebas de la lista doblemente enlazada (structs/doubly_linked_list.py)."""
+"""Tests for the doubly linked list (structs/doubly_linked_list.py)."""
 import unittest
 
 from services.purchases import OLDEST_FIRST, purchase_history
@@ -37,7 +37,7 @@ class DoublyLinkedListTest(unittest.TestCase):
         self.assertEqual(linked_list.size, 2)
 
     def test_purchase_history(self):
-        purchases = [{"id": 3}, {"id": 2}, {"id": 1}]  # vienen de la más reciente a la más antigua
+        purchases = [{"id": 3}, {"id": 2}, {"id": 1}]  # they come from newest to oldest
         self.assertEqual([p["id"] for p in purchase_history(iter(purchases))], [3, 2, 1])
         self.assertEqual([p["id"] for p in purchase_history(iter(purchases), OLDEST_FIRST)], [1, 2, 3])
 

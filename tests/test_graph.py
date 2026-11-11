@@ -1,4 +1,4 @@
-"""Pruebas del grafo dirigido y ponderado (structs/graph.py)."""
+"""Tests for the directed weighted graph (structs/graph.py)."""
 import unittest
 
 from structs.graph import Graph, normalize
@@ -18,7 +18,7 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(normalize("BOGOTÁ"), "bogota")
 
     def test_does_not_repeat_vertices(self):
-        self.assertEqual(sample_graph().size, 3)  # Pasto, Ipiales y Cali
+        self.assertEqual(sample_graph().size, 3)  # Pasto, Ipiales and Cali
 
     def test_finds_vertex_ignoring_accents(self):
         graph = Graph()

@@ -1,4 +1,4 @@
-"""Pruebas de la validación de formularios (services/validation.py) y de los pasajeros."""
+"""Tests for form validation (services/validation.py) and passengers."""
 import unittest
 
 from services.purchases import MAX_SEATS_PER_PURCHASE, PurchaseError, clean_passengers

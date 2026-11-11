@@ -1,8 +1,8 @@
-"""Pruebas de la compra contra una base de datos PostgreSQL real, incluida la concurrencia.
+"""Purchase tests against a real PostgreSQL database, including concurrency.
 
-No usan la base de producción. Solo corren si existe la variable TEST_DATABASE_URL
-con una base VACÍA y desechable (por ejemplo una rama de Neon llamada "pruebas"):
-la prueba borra y vuelve a crear todas las tablas en ella.
+They never use the production database. They only run when TEST_DATABASE_URL
+points to an EMPTY, disposable database (for example a Neon branch named "testing"):
+the tests drop and recreate every table in it.
 
     TEST_DATABASE_URL=postgresql://... python -m unittest tests.test_purchases_database
 """
@@ -21,7 +21,7 @@ from services.dates import today_in_colombia
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 SCRIPTS = ("01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql")
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
-CALI_SCHEDULE_ID = 19        # Bolivariano Pasto → Cali 20:30, bus de 40 puestos
+CALI_SCHEDULE_ID = 19        # Bolivariano Pasto → Cali 20:30, 40-seat bus
 LAST_SEAT = 40
 
 
@@ -29,12 +29,12 @@ def passenger(seat, name="Ana Pérez", document="1085123456"):
     return {"seat": seat, "name": name, "document": document}
 
 
-@unittest.skipUnless(TEST_DATABASE_URL, "Define TEST_DATABASE_URL con una base desechable para correr estas pruebas")
+@unittest.skipUnless(TEST_DATABASE_URL, "Set TEST_DATABASE_URL to a disposable database to run these tests")
 class PurchasesDatabaseTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if TEST_DATABASE_URL == os.getenv("DATABASE_URL"):
-            raise RuntimeError("TEST_DATABASE_URL no puede ser la base de producción")
+            raise RuntimeError("TEST_DATABASE_URL cannot be the production database")
         cls.original_url = config.DATABASE_URL
         config.DATABASE_URL = TEST_DATABASE_URL
 
@@ -64,7 +64,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
             self.eva, CALI_SCHEDULE_ID, self.travel_date, [passenger(n) for n in range(1, 6)]
         )
         with connect() as connection, connection.cursor() as cursor:
-            # los asientos 6 a 39 quedan pagados por otras compras
+            # seats 6 to 39 are paid by other purchases
             cursor.execute("INSERT INTO payments (amount, status) VALUES (0, 'PAID') RETURNING id;")
             payment_id = cursor.fetchone()[0]
             cursor.execute(
@@ -75,7 +75,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
                 (CALI_SCHEDULE_ID, self.travel_date, payment_id),
             )
 
-    # ---------------- Concurrencia ----------------
+    # ---------------- Concurrency ----------------
 
     def test_two_people_take_the_last_seat_at_the_same_time(self):
         self.fill_bus_except_last_seat()
@@ -86,7 +86,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
         results = {}
 
         def try_to_reserve(user_id):
-            start_together.wait()  # los dos piden el asiento 40 en el mismo instante
+            start_together.wait()  # both ask for seat 40 at the same instant
             try:
                 results[user_id] = self.reserve(user_id, [LAST_SEAT])["status"]
             except purchases.PurchaseError as error:
@@ -120,11 +120,11 @@ class PurchasesDatabaseTest(unittest.TestCase):
             thread.join()
         self.assertEqual(len(winners), 1)
 
-    # ---------------- Compra pendiente repetida ----------------
+    # ---------------- Repeated pending purchase ----------------
 
     def test_reserving_again_the_same_trip_replaces_the_pending_purchase(self):
         first = self.reserve(self.ana, [1, 2])
-        second = self.reserve(self.ana, [1, 2, 3])  # volvió atrás y cambió de opinión
+        second = self.reserve(self.ana, [1, 2, 3])  # went back and changed their mind
         history = purchases.get_my_tickets(self.ana)
         pending = [p for p in history if p["status"] in purchases.PENDING_STATUSES]
         self.assertEqual([p["payment_id"] for p in pending], [second["payment_id"]])
@@ -132,14 +132,14 @@ class PurchasesDatabaseTest(unittest.TestCase):
             next(p for p in history if p["payment_id"] == first["payment_id"])["status"], "CANCELLED"
         )
 
-    # ---------------- Caminos que fallan ----------------
+    # ---------------- Failure paths ----------------
 
     def test_taken_seat_is_rejected_and_nothing_is_half_reserved(self):
         self.reserve(self.ana, [5])
         with self.assertRaises(purchases.PurchaseError) as context:
             self.reserve(self.luis, [4, 5, 6])
         self.assertEqual(context.exception.status_code, 409)
-        self.assertEqual(purchases.get_my_tickets(self.luis), [])  # no quedó nada a medias
+        self.assertEqual(purchases.get_my_tickets(self.luis), [])  # nothing was left half done
 
     def test_seat_outside_the_bus_or_past_date(self):
         with self.assertRaises(purchases.PurchaseError):
@@ -165,7 +165,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
         purchase = self.reserve(self.ana, [8, 9])
         status, _ = purchases.cancel_purchase(self.ana, purchase["payment_id"])
         self.assertEqual(status, "CANCELLED")
-        self.reserve(self.luis, [8, 9])  # los asientos quedaron libres
+        self.reserve(self.luis, [8, 9])  # the seats are free again
         with self.assertRaises(purchases.PurchaseError):
             purchases.get_payment_details(self.ana, purchase["payment_id"])
 
@@ -173,7 +173,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
         purchase = self.reserve(self.ana, [11])
         purchases.mark_as_paying(self.ana, purchase["payment_id"], "cs_test_1")
         self.assertEqual(purchases.mark_as_paid(self.ana, purchase["payment_id"]), "PAID")
-        self.assertEqual(purchases.mark_as_paid(self.ana, purchase["payment_id"]), "PAID")  # recargar la página
+        self.assertEqual(purchases.mark_as_paid(self.ana, purchase["payment_id"]), "PAID")  # reloading the page
         with self.assertRaises(purchases.PurchaseError):
             purchases.cancel_purchase(self.ana, purchase["payment_id"])
 

@@ -1,6 +1,6 @@
-"""Árbol n-ario con primer hijo / siguiente hermano.
+"""N-ary tree using first child / next sibling links.
 
-En TerminAPP representa la jerarquía Terminal → empresa → destino → salida.
+In TerminAPP it represents the hierarchy Terminal → company → route → departure.
 """
 
 
@@ -41,7 +41,7 @@ class NaryTree:
         self.root = NaryNode(root_name)
 
     def describe(self):
-        """Devuelve el árbol como texto con sangría por nivel."""
+        """Returns the tree as text, indented by level."""
         lines = []
         self._describe(self.root, 0, lines)
         return "\n".join(lines)

@@ -1,8 +1,8 @@
-"""Cola (FIFO) con nodos enlazados.
+"""Queue (FIFO) built from linked nodes.
 
-El primero que entra es el primero que sale. En TerminAPP guarda las reservas
-pendientes por orden de llegada: la más antigua queda al frente, así basta con
-mirar el frente para saber si alguna reserva ya venció.
+First in, first out. In TerminAPP it holds pending reservations in arrival
+order: the oldest one is at the front, so looking at the front is enough to
+know whether any reservation has expired.
 """
 
 
@@ -22,7 +22,7 @@ class Queue:
         return self.front is None
 
     def enqueue(self, data):
-        """Agrega al final. O(1)."""
+        """Adds at the end. O(1)."""
         new_node = QueueNode(data)
         if self.rear is None:
             self.front = new_node
@@ -32,7 +32,7 @@ class Queue:
         self.size += 1
 
     def dequeue(self):
-        """Saca y devuelve el del frente. O(1)."""
+        """Removes and returns the front item. O(1)."""
         if self.front is None:
             return None
         data = self.front.data
@@ -43,5 +43,5 @@ class Queue:
         return data
 
     def peek(self):
-        """Mira el del frente sin sacarlo. O(1)."""
+        """Looks at the front item without removing it. O(1)."""
         return None if self.front is None else self.front.data

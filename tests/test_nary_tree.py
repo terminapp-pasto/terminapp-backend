@@ -1,4 +1,4 @@
-"""Pruebas del árbol n-ario (structs/nary_tree.py)."""
+"""Tests for the n-ary tree (structs/nary_tree.py)."""
 import unittest
 
 from structs.nary_tree import NaryTree

@@ -1,4 +1,4 @@
-"""Pruebas de la autenticación: contraseñas cifradas y tokens de sesión."""
+"""Authentication tests: encrypted passwords and session tokens."""
 import os
 import time
 import unittest

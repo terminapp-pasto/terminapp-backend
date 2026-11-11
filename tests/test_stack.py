@@ -1,4 +1,4 @@
-"""Pruebas de la pila (structs/stack.py)."""
+"""Tests for the stack (structs/stack.py)."""
 import unittest
 
 from services.purchases import FREE, RESERVED, build_seat_map, hold_seats
@@ -19,7 +19,7 @@ class StackTest(unittest.TestCase):
         seat_map = build_seat_map(40, [12])
         self.assertEqual(hold_seats(seat_map, [10, 11, 12, 13]), 12)
         for number in (10, 11, 13):
-            self.assertEqual(seat_map.get(number), FREE)  # la pila los liberó
+            self.assertEqual(seat_map.get(number), FREE)  # the stack released them
 
     def test_complete_reservation(self):
         seat_map = build_seat_map(40, [])

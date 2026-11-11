@@ -1,4 +1,4 @@
-"""Pruebas del árbol AVL de horarios (structs/avl_tree.py)."""
+"""Tests for the schedule AVL tree (structs/avl_tree.py)."""
 import unittest
 from datetime import time
 
@@ -26,7 +26,7 @@ class AVLTreeTest(unittest.TestCase):
 
     def test_stays_balanced_with_sorted_data(self):
         tree = AVLTree()
-        for minutes in range(0, 1440, 15):  # el peor caso para un árbol sin balanceo
+        for minutes in range(0, 1440, 15):  # the worst case for an unbalanced tree
             tree.insert(minutes, minutes, 1, 1000, 40)
         self.assertEqual(tree.size, 96)
         self.assertTrue(is_balanced(tree.root))
@@ -38,7 +38,7 @@ class AVLTreeTest(unittest.TestCase):
             tree.insert(minutes, minutes, 1, 1000, 40)
         visited = []
         tree.traverse_from(1080, lambda node: visited.append(node.minutes))
-        self.assertEqual(visited, [1080, 1260, 1320])  # solo desde las 18:00 y en orden
+        self.assertEqual(visited, [1080, 1260, 1320])  # only from 18:00 on, and in order
 
     def test_accepts_repeated_times(self):
         tree = AVLTree()

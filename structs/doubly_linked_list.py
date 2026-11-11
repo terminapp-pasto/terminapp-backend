@@ -1,9 +1,8 @@
-"""Lista doblemente enlazada.
+"""Doubly linked list.
 
-Cada nodo conoce al anterior y al siguiente, así se puede recorrer en los dos
-sentidos. En TerminAPP guarda el historial de tiquetes del usuario: de la
-cabeza hacia la cola son los más recientes primero, y al revés los más
-antiguos primero, sin tener que volver a ordenar.
+Each node knows the previous and the next one, so it can be walked both ways.
+In TerminAPP it holds the user's purchase history: head to tail gives the
+newest first, tail to head the oldest first, without sorting again.
 """
 
 
@@ -24,7 +23,7 @@ class DoublyLinkedList:
         return self.head is None
 
     def append(self, data):
-        """Agrega al final. O(1)."""
+        """Adds at the end. O(1)."""
         new_node = DoublyLinkedNode(data)
         if self.tail is None:
             self.head = new_node
@@ -36,7 +35,7 @@ class DoublyLinkedList:
         return new_node
 
     def prepend(self, data):
-        """Agrega al inicio. O(1)."""
+        """Adds at the beginning. O(1)."""
         new_node = DoublyLinkedNode(data)
         if self.head is None:
             self.tail = new_node
@@ -48,7 +47,7 @@ class DoublyLinkedList:
         return new_node
 
     def remove_node(self, node):
-        """Quita un nodo que ya se tiene en la mano. O(1)."""
+        """Removes a node we already hold. O(1)."""
         if node.previous is None:
             self.head = node.next
         else:
@@ -61,14 +60,14 @@ class DoublyLinkedList:
         self.size -= 1
 
     def traverse_forward(self, visit):
-        """De la cabeza a la cola. O(n)."""
+        """From head to tail. O(n)."""
         node = self.head
         while node is not None:
             visit(node.data)
             node = node.next
 
     def traverse_backward(self, visit):
-        """De la cola a la cabeza. O(n)."""
+        """From tail to head. O(n)."""
         node = self.tail
         while node is not None:
             visit(node.data)
