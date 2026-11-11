@@ -1,8 +1,8 @@
-"""Herramientas que la IA puede pedirle al backend.
+"""Tools the AI can ask the backend to run.
 
-La IA no busca ni inventa horarios: solo decide qué herramienta usar y con qué
-datos. Cada herramienta llama al motor de búsqueda, que trabaja con el grafo,
-el árbol AVL y el heap.
+The AI never searches or invents schedules: it only decides which tool to use
+and with which data. Each tool calls the search engine, which works with the
+graph, the AVL tree and the heap.
 """
 
 from services.data_loader import load_graph
@@ -13,34 +13,34 @@ ORIGIN = "Pasto"
 SEARCH_TICKETS = "search_tickets"
 LIST_DESTINATIONS = "list_destinations"
 
-# Descripción de cada herramienta en el formato que entiende Gemini.
+# Description of each tool in the format Gemini understands.
 TOOL_DECLARATIONS = [
     {
         "name": SEARCH_TICKETS,
         "description": (
-            "Busca las salidas de bus desde la Terminal de Pasto hacia un destino en un día, "
-            "a partir de una hora, ordenadas por hora de salida o por precio, con los cupos libres de ese día. "
-            "Úsala siempre que el usuario pregunte por pasajes, horarios o precios."
+            "Searches the bus departures from the Pasto terminal to a destination on one day, "
+            "from a given time on, sorted by departure time or by price, with that day's free seats. "
+            "Use it whenever the user asks about tickets, schedules or prices."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "destination": {
                     "type": "string",
-                    "description": "Municipio de destino, por ejemplo Cali, Ipiales o Sandoná.",
+                    "description": "Destination town, for example Cali, Ipiales or Sandoná.",
                 },
                 "date": {
                     "type": "string",
-                    "description": "Día del viaje en formato AAAA-MM-DD. Si el usuario no dice el día, usa la fecha de hoy.",
+                    "description": "Travel day in YYYY-MM-DD format. If the user does not say the day, use today's date.",
                 },
                 "from_time": {
                     "type": "string",
-                    "description": "Hora mínima de salida en formato HH:MM de 24 horas. Usa 00:00 si el usuario no dice una hora.",
+                    "description": "Earliest departure time in 24-hour HH:MM format. Use 00:00 if the user does not say a time.",
                 },
                 "sort_by": {
                     "type": "string",
                     "enum": [SORT_BY_TIME, SORT_BY_PRICE],
-                    "description": "time para ordenar por hora de salida, price para ordenar del más barato al más caro.",
+                    "description": "time to sort by departure time, price to sort from cheapest to most expensive.",
                 },
             },
             "required": ["destination"],
@@ -48,13 +48,13 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": LIST_DESTINATIONS,
-        "description": "Devuelve los municipios a los que salen buses desde la Terminal de Pasto.",
+        "description": "Returns the towns that buses leave for from the Pasto terminal.",
     },
 ]
 
 
 def parse_time_to_minutes(text):
-    """Convierte "HH:MM" en minutos desde la medianoche; lanza ValueError si no se puede."""
+    """Converts "HH:MM" into minutes after midnight; raises ValueError if it cannot."""
     hours, minutes = str(text).split(":")
     hours, minutes = int(hours), int(minutes)
     if not (0 <= hours <= 23 and 0 <= minutes <= 59):
@@ -70,7 +70,7 @@ def search_tickets(destination, from_time="00:00", sort_by=SORT_BY_TIME, date=""
     try:
         start_minutes = parse_time_to_minutes(from_time)
     except ValueError:
-        return {"error": "La hora debe tener el formato HH:MM"}
+        return {"error": "The time must use the HH:MM format"}
 
     if sort_by not in (SORT_BY_TIME, SORT_BY_PRICE):
         sort_by = SORT_BY_TIME
@@ -78,14 +78,14 @@ def search_tickets(destination, from_time="00:00", sort_by=SORT_BY_TIME, date=""
     result = {"date": travel_date.isoformat()}
     departures = search_departures(ORIGIN, destination, start_minutes, sort_by, travel_date)
     if departures is None:
-        # puede ser un error de escritura: "bodota" -> Bogotá
+        # it may be a typo: "bodota" -> Bogotá
         closest = load_graph().find_closest(destination)
         if closest is not None and closest.name != ORIGIN:
             departures = search_departures(ORIGIN, closest.name, start_minutes, sort_by, travel_date)
-            result["note"] = f'El usuario escribió "{destination}"; se entendió como {closest.name}.'
+            result["note"] = f'The user wrote "{destination}"; it was understood as {closest.name}.'
     if departures is None:
         return {
-            "error": f"No hay rutas desde {ORIGIN} hacia {destination}.",
+            "error": f"There are no routes from {ORIGIN} to {destination}.",
             "available_destinations": list_destinations()["destinations"],
         }
     result.update({"count": len(departures), "departures": departures})
@@ -105,7 +105,7 @@ def list_destinations():
 
 
 def run_tool(name, arguments):
-    """Ejecuta la herramienta que pidió la IA y devuelve su resultado."""
+    """Runs the tool the AI asked for and returns its result."""
     try:
         if name == SEARCH_TICKETS:
             return search_tickets(
@@ -116,6 +116,6 @@ def run_tool(name, arguments):
             )
         if name == LIST_DESTINATIONS:
             return list_destinations()
-        return {"error": f"No existe la herramienta {name}"}
+        return {"error": f"There is no tool named {name}"}
     except Exception:
-        return {"error": "No se pudo consultar la base de datos en este momento"}
+        return {"error": "The database could not be queried right now"}
