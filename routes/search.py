@@ -1,4 +1,4 @@
-"""Rutas de búsqueda de salidas."""
+"""Departure search routes."""
 
 from typing import Literal
 
@@ -10,10 +10,10 @@ from services.search import SORT_BY_TIME, search_departures
 
 PLACE_MAX_LENGTH = 40
 
-router = APIRouter(tags=["Búsqueda"])
+router = APIRouter(tags=["Search"])
 
 
-@router.get("/search", summary="Busca salidas de un día desde una hora, con cupos libres reales")
+@router.get("/search", summary="Searches the departures of a day from a given time, with real free seats")
 def search(
     destination: str = Query(..., max_length=PLACE_MAX_LENGTH),
     origin: str = Query(ORIGIN, max_length=PLACE_MAX_LENGTH),
@@ -41,6 +41,6 @@ def search(
     }
 
 
-@router.get("/destinations", summary="Lista los destinos con rutas desde Pasto")
+@router.get("/destinations", summary="Lists the destinations with routes from Pasto")
 def destinations():
     return list_destinations()

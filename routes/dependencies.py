@@ -1,4 +1,4 @@
-"""Piezas que comparten varias rutas: usuario actual y conversión de errores."""
+"""Pieces shared by several routes: current user and date checks."""
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -11,7 +11,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)):
-    """Protege una ruta: exige un token válido y devuelve el usuario dueño del token."""
+    """Protects a route: requires a valid token and returns the user who owns it."""
     if credentials is None:
         raise HTTPException(status_code=401, detail="Debes iniciar sesión")
     try:
@@ -26,7 +26,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
 
 
 def require_date(text):
-    """Fecha AAAA-MM-DD obligatoria; si no sirve, error 400."""
+    """Required YYYY-MM-DD date; responds 400 if it is invalid."""
     try:
         return parse_date(text)
     except InvalidDateError as error:
@@ -34,7 +34,7 @@ def require_date(text):
 
 
 def require_travel_date(text):
-    """Fecha de viaje (vacía = hoy) dentro de la ventana de venta; si no sirve, error 400."""
+    """Travel date (empty = today) inside the sales window; responds 400 if it is invalid."""
     try:
         return parse_travel_date(text)
     except InvalidDateError as error:

@@ -1,8 +1,8 @@
-"""Utilidades de autenticación: cifrar y verificar contraseñas.
+"""Authentication utilities: encrypt and verify passwords.
 
-La contraseña nunca se guarda tal cual: se guarda un hash PBKDF2-SHA256 con una
-sal (salt) aleatoria distinta para cada usuario. Así, aunque alguien vea la
-base de datos, no puede saber las contraseñas.
+A password is never stored as is: we store a PBKDF2-SHA256 hash with a random
+salt that is different for every user. That way, even someone who sees the
+database cannot learn the passwords.
 """
 
 import base64
@@ -26,8 +26,8 @@ def _derive_hash(password, salt, iterations):
 
 
 def encrypt_password(password):
-    """Devuelve el texto que se guarda en users.password_hash:
-    "algoritmo$iteraciones$salt$hash"."""
+    """Returns the text stored in users.password_hash:
+    "algorithm$iterations$salt$hash"."""
     salt = secrets.token_bytes(SALT_SIZE_BYTES)
     password_hash = _derive_hash(password, salt, HASH_ITERATIONS)
     return FIELD_SEPARATOR.join(
@@ -36,7 +36,7 @@ def encrypt_password(password):
 
 
 def verify_password(password, stored_hash):
-    """Comprueba si la contraseña escrita coincide con el hash guardado."""
+    """Checks whether the typed password matches the stored hash."""
     try:
         algorithm, iterations, salt, saved_hash = stored_hash.split(FIELD_SEPARATOR)
         if algorithm != HASH_ALGORITHM:
@@ -44,5 +44,5 @@ def verify_password(password, stored_hash):
         new_hash = _derive_hash(password, base64.b64decode(salt), int(iterations))
     except (ValueError, TypeError, AttributeError):
         return False
-    # compare_digest tarda lo mismo acierte o no, para no dar pistas por el tiempo
+    # compare_digest takes the same time whether it matches or not, so timing gives no hints
     return hmac.compare_digest(new_hash, base64.b64decode(saved_hash))

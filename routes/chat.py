@@ -1,4 +1,4 @@
-"""Ruta del chat con la IA."""
+"""AI chat route."""
 
 from typing import Literal
 
@@ -9,7 +9,7 @@ from ai.gemini import AIError
 from ai.orchestrator import generate_reply
 from services.validation import CHAT_MAX_MESSAGES, CHAT_MESSAGE_MAX_LENGTH
 
-router = APIRouter(tags=["Chat con IA"])
+router = APIRouter(tags=["AI chat"])
 
 
 class ChatMessage(BaseModel):
@@ -21,12 +21,12 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=CHAT_MAX_MESSAGES)
 
 
-@router.post("/chat", summary="Responde la conversación usando la IA y el motor de búsqueda")
+@router.post("/chat", summary="Answers the conversation using the AI and the search engine")
 def chat(request: ChatRequest):
     try:
         return generate_reply([message.model_dump() for message in request.messages])
     except AIError as error:
-        print("Error de la IA:", error)
+        print("AI error:", error)
         raise HTTPException(
             status_code=502,
             detail="El asistente no está disponible en este momento. Intenta de nuevo en unos segundos.",

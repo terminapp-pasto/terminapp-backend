@@ -1,4 +1,4 @@
-"""Conexión con la base de datos. Es el único lugar que abre conexiones."""
+"""Database connection. This is the only place that opens connections."""
 
 import psycopg
 
@@ -6,5 +6,5 @@ import config
 
 
 def connect():
-    """Abre una conexión. Usada con "with", confirma al salir o deshace si hubo error."""
+    """Opens a connection. Used with "with", it commits on exit or rolls back on error."""
     return psycopg.connect(config.DATABASE_URL)

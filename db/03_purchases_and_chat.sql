@@ -1,6 +1,6 @@
--- Script 3: tablas para las cuentas, la compra, el pago y el chat con la IA.
--- Se ejecuta después de 01_tables.sql y 02_seed_data.sql.
--- Los límites de largo (VARCHAR) son los mismos que valida el backend.
+-- Script 3: tables for accounts, purchases, payments and the AI chat.
+-- Runs after 01_tables.sql and 02_seed_data.sql.
+-- The length limits (VARCHAR) are the same ones the backend validates.
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -10,7 +10,7 @@ CREATE TABLE users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Un pasajero por cada tiquete: si se compran 3 asientos, se guardan 3 pasajeros.
+-- One passenger per ticket: buying 3 seats stores 3 passengers.
 CREATE TABLE passengers (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -32,7 +32,7 @@ CREATE TABLE seats (
     UNIQUE (bus_id, number)
 );
 
--- Un pago cubre todos los tiquetes de una compra (por ejemplo 3 asientos).
+-- One payment covers every ticket of a purchase (for example 3 seats).
 CREATE TABLE payments (
     id SERIAL PRIMARY KEY,
     stripe_session_id TEXT UNIQUE,
