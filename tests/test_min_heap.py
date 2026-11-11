@@ -1,4 +1,4 @@
-"""Pruebas del montículo de mínimos (structs/min_heap.py)."""
+"""Tests for the min-heap (structs/min_heap.py)."""
 import random
 import unittest
 

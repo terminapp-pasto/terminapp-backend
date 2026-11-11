@@ -1,14 +1,14 @@
-"""Máquina de estados finitos.
+"""Finite state machine.
 
-Guarda las transiciones permitidas en una lista enlazada propia. Cada
-transición dice: "desde este estado, con este evento, se pasa a este otro".
-Si alguien intenta un paso que no está en la lista (por ejemplo pagar un
-tiquete cancelado), la máquina lo rechaza.
+It stores the allowed transitions in its own linked list. Each transition
+says: "from this state, with this event, go to that state". If someone tries a
+step that is not in the list (for example paying a cancelled ticket), the
+machine rejects it.
 """
 
 
 class TransitionError(Exception):
-    """Se intentó un evento que no está permitido en el estado actual."""
+    """An event was attempted that is not allowed in the current state."""
 
 
 class Transition:
@@ -32,7 +32,7 @@ class StateMachine:
         self.size += 1
 
     def _find_transition(self, event):
-        """Busca la transición del estado actual con ese evento. O(t), t = transiciones."""
+        """Finds the transition for the current state and that event. O(t), t = transitions."""
         current = self.first_transition
         while current is not None:
             if current.source == self.state and current.event == event:
@@ -44,7 +44,7 @@ class StateMachine:
         return self._find_transition(event) is not None
 
     def trigger(self, event):
-        """Aplica el evento y devuelve el nuevo estado; si no se puede, lanza TransitionError."""
+        """Applies the event and returns the new state; if not allowed, raises TransitionError."""
         transition = self._find_transition(event)
         if transition is None:
             raise TransitionError(f"No se puede '{event}' cuando el tiquete está {self.state}")
@@ -52,15 +52,15 @@ class StateMachine:
         return self.state
 
 
-# ---- Estados de una compra en TerminAPP ----
-SELECTING = "SELECTING"    # el usuario está escogiendo asiento
-RESERVED = "RESERVED"      # el asiento queda apartado mientras paga
-PAYING = "PAYING"          # el usuario está pagando en Stripe
-PAID = "PAID"              # Stripe confirmó el pago: el tiquete es válido
-CANCELLED = "CANCELLED"    # el usuario desistió
-EXPIRED = "EXPIRED"        # pasó el tiempo de reserva sin pagar
+# ---- States of a purchase in TerminAPP ----
+SELECTING = "SELECTING"    # the user is choosing seats
+RESERVED = "RESERVED"      # the seat is held while the user pays
+PAYING = "PAYING"          # the user is paying in Stripe
+PAID = "PAID"              # Stripe confirmed the payment: the ticket is valid
+CANCELLED = "CANCELLED"    # the user gave up
+EXPIRED = "EXPIRED"        # the hold time ran out without payment
 
-# ---- Eventos ----
+# ---- Events ----
 RESERVE = "reserve"
 START_PAYMENT = "start_payment"
 CONFIRM_PAYMENT = "confirm_payment"
@@ -69,11 +69,11 @@ EXPIRE = "expire"
 
 
 def purchase_state_machine(current_state=SELECTING):
-    """Crea la máquina con las reglas de una compra, empezando en current_state."""
+    """Builds the machine with the purchase rules, starting at current_state."""
     machine = StateMachine(current_state)
     machine.add_transition(SELECTING, RESERVE, RESERVED)
     machine.add_transition(RESERVED, START_PAYMENT, PAYING)
-    machine.add_transition(PAYING, START_PAYMENT, PAYING)   # retomar un pago abierto
+    machine.add_transition(PAYING, START_PAYMENT, PAYING)   # resume an open payment
     machine.add_transition(PAYING, CONFIRM_PAYMENT, PAID)
     machine.add_transition(RESERVED, CANCEL, CANCELLED)
     machine.add_transition(PAYING, CANCEL, CANCELLED)

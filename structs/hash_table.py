@@ -1,10 +1,10 @@
-"""Tabla hash con encadenamiento.
+"""Hash table with separate chaining.
 
-La tabla es un arreglo de tamaño fijo de "cubetas" (buckets). Cada clave pasa
-por una función hash propia que dice en qué cubeta va, así se encuentra en O(1)
-en promedio sin recorrer todo. Si dos claves caen en la misma cubeta (colisión),
-se encadenan en una lista enlazada de nodos propios. Cuando la tabla se llena
-más del 75 %, se duplica el tamaño y se reubican las claves (rehash).
+The table is a fixed-size array of buckets. Each key goes through our own hash
+function, which tells which bucket it belongs to, so lookups are O(1) on
+average without scanning everything. When two keys land in the same bucket
+(a collision) they are chained in a linked list of our own nodes. When the
+table is more than 75% full it doubles its size and relocates the keys (rehash).
 """
 
 MAX_LOAD_FACTOR = 0.75
@@ -22,20 +22,20 @@ class HashNode:
 class HashTable:
     def __init__(self, capacity=16):
         self.capacity = capacity
-        # El arreglo de cubetas es solo memoria de tamaño fijo, como en C:
-        # nunca crece con append; todos los datos viven en nodos HashNode.
+        # The bucket array is only fixed-size memory, like in C:
+        # it never grows with append; all the data lives in HashNode nodes.
         self.buckets = [None] * capacity
         self.size = 0
 
     def _bucket_index(self, key):
-        """Hash polinómico propio sobre los caracteres de la clave (no usa hash() de Python)."""
+        """Our own polynomial hash over the key's characters (does not use Python's hash())."""
         hash_value = 0
         for character in str(key):
             hash_value = (hash_value * HASH_MULTIPLIER + ord(character)) % HASH_MODULUS
         return hash_value % self.capacity
 
     def put(self, key, value):
-        """Agrega la clave o actualiza su valor si ya existe. O(1) promedio."""
+        """Adds the key, or updates its value if it already exists. O(1) on average."""
         index = self._bucket_index(key)
         node = self.buckets[index]
         while node is not None:
@@ -53,7 +53,7 @@ class HashTable:
             self._resize()
 
     def get(self, key, default=None):
-        """Devuelve el valor de la clave. O(1) promedio."""
+        """Returns the key's value. O(1) on average."""
         node = self.buckets[self._bucket_index(key)]
         while node is not None:
             if node.key == key:
@@ -70,7 +70,7 @@ class HashTable:
         return False
 
     def remove(self, key):
-        """Quita la clave. Devuelve True si estaba. O(1) promedio."""
+        """Removes the key. Returns True if it was there. O(1) on average."""
         index = self._bucket_index(key)
         previous = None
         node = self.buckets[index]
@@ -87,7 +87,7 @@ class HashTable:
         return False
 
     def for_each(self, visit):
-        """Llama visit(clave, valor) por cada elemento. O(n + capacidad)."""
+        """Calls visit(key, value) for every item. O(n + capacity)."""
         for index in range(self.capacity):
             node = self.buckets[index]
             while node is not None:
@@ -95,7 +95,7 @@ class HashTable:
                 node = node.next
 
     def _resize(self):
-        """Duplica la capacidad y vuelve a ubicar cada nodo en su nueva cubeta."""
+        """Doubles the capacity and moves every node to its new bucket."""
         old_buckets = self.buckets
         old_capacity = self.capacity
         self.capacity *= 2

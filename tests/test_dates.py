@@ -1,4 +1,4 @@
-"""Pruebas de las fechas de viaje: qué días se venden y qué fecha conoce la IA."""
+"""Travel date tests: which days are on sale and which date the AI knows."""
 import unittest
 from datetime import datetime, timedelta
 
@@ -26,7 +26,7 @@ class DatesTest(unittest.TestCase):
 
     def test_ai_knows_today_and_next_days(self):
         text = build_system_instructions(datetime(2026, 10, 19, 23, 7, tzinfo=COLOMBIA_TIMEZONE))
-        self.assertIn("HOY es lunes 19 de octubre de 2026 (2026-10-19)", text)
+        self.assertIn("TODAY is lunes 19 de octubre de 2026 (2026-10-19)", text)
         self.assertIn("sábado 24 de octubre de 2026 (2026-10-24)", text)
         self.assertIn("23:07", text)
 

@@ -1,8 +1,8 @@
-"""Montículo de mínimos (min-heap) hecho con nodos enlazados.
+"""Min-heap built from linked nodes.
 
-La raíz siempre tiene la clave más pequeña (por ejemplo el precio más bajo).
-Para llegar a la posición n del árbol se siguen los bits de n en binario:
-0 = izquierda, 1 = derecha.
+The root always holds the smallest key (for example the lowest price).
+To reach position n in the tree we follow the bits of n in binary:
+0 = left, 1 = right.
 """
 
 

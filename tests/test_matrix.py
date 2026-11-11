@@ -1,4 +1,4 @@
-"""Pruebas de la matriz con nodos enlazados (structs/matrix.py)."""
+"""Tests for the linked-node matrix (structs/matrix.py)."""
 import unittest
 
 from structs.graph import Graph, edit_distance
@@ -25,7 +25,7 @@ class MatrixTest(unittest.TestCase):
     def test_travel_time_matrix_of_the_graph(self):
         graph = Graph()
         graph.add_route("Pasto", "Ipiales", 120, "A", 1)
-        graph.add_route("Pasto", "Ipiales", 100, "B", 2)  # se queda la más rápida
+        graph.add_route("Pasto", "Ipiales", 100, "B", 2)  # the fastest one is kept
         times = graph.travel_time_matrix()
         pasto = graph.find_vertex("Pasto").index
         ipiales = graph.find_vertex("Ipiales").index
@@ -34,9 +34,9 @@ class MatrixTest(unittest.TestCase):
         self.assertIsNone(times.get(ipiales, pasto))
 
     def test_edit_distance_with_the_matrix(self):
-        self.assertEqual(edit_distance("bodota", "Bogotá"), 1)   # cambiar d por g
-        self.assertEqual(edit_distance("Sandona", "Sandoná"), 0)  # las tildes no cuentan
-        self.assertEqual(edit_distance("moco", "Mocoa"), 1)      # falta una letra
+        self.assertEqual(edit_distance("bodota", "Bogotá"), 1)   # change d to g
+        self.assertEqual(edit_distance("Sandona", "Sandoná"), 0)  # accents do not count
+        self.assertEqual(edit_distance("moco", "Mocoa"), 1)      # one letter is missing
         self.assertEqual(edit_distance("", "Cali"), 4)
 
 

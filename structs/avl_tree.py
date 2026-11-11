@@ -1,7 +1,7 @@
-"""Árbol AVL ordenado por la hora de salida (en minutos desde la medianoche).
+"""AVL tree ordered by departure time (in minutes after midnight).
 
-Se mantiene balanceado con rotaciones, así insertar cuesta O(log n) y
-recorrer las salidas desde una hora dada sale en orden sin volver a ordenar.
+Rotations keep it balanced, so inserting costs O(log n) and walking the
+departures from a given time comes out already sorted.
 """
 
 
@@ -79,7 +79,7 @@ class AVLTree:
         return node
 
     def traverse_from(self, start_minutes, visit):
-        """Llama visit(nodo) en orden para cada salida desde start_minutes."""
+        """Calls visit(node) in order for every departure from start_minutes on."""
         self._traverse_from(self.root, start_minutes, visit)
 
     def _traverse_from(self, node, start_minutes, visit):

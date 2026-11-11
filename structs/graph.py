@@ -1,7 +1,7 @@
-"""Grafo dirigido con lista de adyacencia hecha con nodos enlazados.
+"""Directed graph with an adjacency list built from linked nodes.
 
-Cada vértice es un municipio y cada arista una ruta de una empresa, con su
-duración en minutos como peso.
+Each vertex is a town and each edge a company route, weighted by its
+duration in minutes.
 """
 
 from structs.matrix import Matrix
@@ -15,9 +15,9 @@ def normalize(text):
 
 
 def edit_distance(first, second):
-    """Cuántas letras hay que cambiar, quitar o poner para pasar de first a second (Levenshtein).
-    Usa la matriz de nodos como tabla de programación dinámica: la celda (i, j)
-    guarda la distancia entre las primeras i letras de first y las primeras j de second."""
+    """How many letters must be changed, removed or added to turn first into second (Levenshtein).
+    Uses the linked-node matrix as the dynamic programming table: cell (i, j)
+    holds the distance between the first i letters of first and the first j of second."""
     first, second = normalize(first), normalize(second)
     table = Matrix(len(first) + 1, len(second) + 1, 0)
     for i in range(len(first) + 1):
@@ -28,9 +28,9 @@ def edit_distance(first, second):
         for j in range(1, len(second) + 1):
             substitution_cost = 0 if first[i - 1] == second[j - 1] else 1
             table.set(i, j, min(
-                table.get(i - 1, j) + 1,                       # quitar una letra
-                table.get(i, j - 1) + 1,                       # poner una letra
-                table.get(i - 1, j - 1) + substitution_cost,   # cambiar una letra
+                table.get(i - 1, j) + 1,                       # remove a letter
+                table.get(i, j - 1) + 1,                       # add a letter
+                table.get(i - 1, j - 1) + substitution_cost,   # change a letter
             ))
     return table.get(len(first), len(second))
 
@@ -94,7 +94,7 @@ class Graph:
         origin_vertex.add_edge(Edge(destination, weight, company, route_id))
 
     def describe(self):
-        """Devuelve un texto con cada municipio y sus rutas de salida."""
+        """Returns a text with every town and its outgoing routes."""
         lines = []
         vertex = self.first_vertex
         while vertex is not None:
@@ -110,8 +110,8 @@ class Graph:
         return "\n".join(lines)
 
     def find_closest(self, name):
-        """El municipio con el nombre más parecido, para corregir errores como "bodota".
-        Solo acepta hasta 2 letras de diferencia (y no más de un tercio del nombre)."""
+        """The town with the most similar name, to fix typos such as "bodota".
+        Accepts at most 2 different letters (and no more than a third of the name)."""
         best, smallest = None, None
         vertex = self.first_vertex
         while vertex is not None:
@@ -132,7 +132,7 @@ class Graph:
         return None
 
     def travel_time_matrix(self):
-        """Matriz de tiempos directos: la celda (i, j) es la ruta más corta de i a j."""
+        """Direct travel time matrix: cell (i, j) is the shortest route from i to j."""
         matrix = Matrix(self.size, self.size)
         vertex = self.first_vertex
         while vertex is not None:

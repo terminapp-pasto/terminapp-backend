@@ -1,4 +1,4 @@
-"""Matriz hecha con nodos enlazados: una lista de filas, y cada fila una lista de celdas."""
+"""Matrix built from linked nodes: a list of rows, and each row a list of cells."""
 
 
 class Cell:
@@ -29,7 +29,7 @@ class Matrix:
 
     def _find_cell(self, row, column):
         if row < 0 or row >= self.rows or column < 0 or column >= self.columns:
-            raise IndexError("La posición está fuera de la matriz")
+            raise IndexError("Position outside the matrix")
         current_row = self.first_row
         for _ in range(row):
             current_row = current_row.next

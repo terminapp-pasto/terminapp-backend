@@ -1,4 +1,4 @@
-"""Pruebas de la máquina de estados de la compra (structs/state_machine.py)."""
+"""Tests for the purchase state machine (structs/state_machine.py)."""
 import unittest
 
 from structs.state_machine import (
