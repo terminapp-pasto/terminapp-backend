@@ -1,7 +1,7 @@
-"""Conexión con la API de Gemini.
+"""Connection to the Gemini API.
 
-Es el único archivo que sabe hablar con el proveedor de IA. Si algún día se
-cambia de proveedor, solo se reemplaza este archivo.
+This is the only file that knows how to talk to the AI provider. If the
+provider ever changes, only this file has to be replaced.
 """
 
 import json
@@ -15,13 +15,13 @@ ERROR_DETAIL_MAX_LENGTH = 500
 
 
 class AIError(Exception):
-    """La IA no pudo responder: falta la clave, no hay conexión o el servicio dio error."""
+    """The AI could not answer: missing key, no connection, or the service returned an error."""
 
 
 def generate_content(contents, system_instructions, tool_declarations):
-    """Envía la conversación a Gemini y devuelve el mensaje con que responde el modelo."""
+    """Sends the conversation to Gemini and returns the model's reply message."""
     if not config.GEMINI_API_KEY:
-        raise AIError("Falta la variable de entorno GEMINI_API_KEY")
+        raise AIError("Missing environment variable GEMINI_API_KEY")
 
     body = {
         "systemInstruction": {"parts": [{"text": system_instructions}]},
@@ -40,11 +40,11 @@ def generate_content(contents, system_instructions, tool_declarations):
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")[:ERROR_DETAIL_MAX_LENGTH]
-        raise AIError(f"Gemini respondió con el código {error.code}: {detail}") from error
+        raise AIError(f"Gemini answered with status {error.code}: {detail}") from error
     except urllib.error.URLError as error:
-        raise AIError(f"No se pudo conectar con Gemini: {error.reason}") from error
+        raise AIError(f"Could not connect to Gemini: {error.reason}") from error
 
     candidates = data.get("candidates") or []
     if not candidates or "content" not in candidates[0]:
-        raise AIError("Gemini no devolvió ninguna respuesta")
+        raise AIError("Gemini returned no answer")
     return candidates[0]["content"]
