@@ -14,7 +14,7 @@ def welcome():
 
 @router.get("/health", summary="Checks the database connection")
 def health():
+    # it does not reveal the database or system version: that only helps an attacker
     with connect() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT version();")
-        version = cursor.fetchone()[0]
-    return {"database": "connected", "version": version}
+        cursor.execute("SELECT 1;")
+    return {"database": "connected"}
