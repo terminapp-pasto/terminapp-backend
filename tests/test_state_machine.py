@@ -2,8 +2,8 @@
 import unittest
 
 from structs.state_machine import (
-    CANCEL, CANCELLED, CONFIRM_PAYMENT, EXPIRE, EXPIRED, PAID, PAYING, RESERVE, RESERVED, SELECTING,
-    START_PAYMENT, TransitionError, purchase_state_machine,
+    CANCEL, CANCELLED, CONFIRM_PAYMENT, EXPIRE, EXPIRED, PAID, PAYING, RECOVER_PAYMENT, RESERVE, RESERVED,
+    SELECTING, START_PAYMENT, TransitionError, purchase_state_machine,
 )
 
 
@@ -29,6 +29,10 @@ class StateMachineTest(unittest.TestCase):
 
     def test_resuming_an_open_payment_keeps_paying(self):
         self.assertEqual(purchase_state_machine(PAYING).trigger(START_PAYMENT), PAYING)
+
+    def test_a_late_payment_can_recover_the_seats(self):
+        self.assertEqual(purchase_state_machine(EXPIRED).trigger(RECOVER_PAYMENT), PAID)
+        self.assertFalse(purchase_state_machine(PAID).can(RECOVER_PAYMENT))
 
     def test_cannot_pay_without_reserving(self):
         with self.assertRaises(TransitionError):
