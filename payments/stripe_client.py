@@ -9,6 +9,8 @@ so the user never leaves the site.
 """
 
 import base64
+import hashlib
+import hmac
 import json
 import time
 import urllib.error
@@ -17,7 +19,7 @@ import urllib.request
 
 import config
 
-SESSION_LIFETIME_MINUTES = 30   # the minimum Stripe allows before a payment session expires
+SESSION_LIFETIME_MINUTES = 31   # Stripe requires at least 30 minutes; one more as a margin
 REQUEST_TIMEOUT_SECONDS = 20
 ERROR_DETAIL_MAX_LENGTH = 500
 TEST_KEY_PREFIX = "sk_test_"
@@ -26,6 +28,7 @@ SESSION_ID_PREFIX = "cs_"
 # uses an older API version, the old one.
 EMBEDDED_UI_MODES = ("embedded_page", "embedded")
 SESSION_OPEN = "open"
+WEBHOOK_TOLERANCE_SECONDS = 300   # Stripe's recommended tolerance for webhook timestamps
 SESSION_COMPLETE = "complete"
 PAYMENT_STATUS_PAID = "paid"
 
@@ -72,7 +75,9 @@ def _check_session_id(session_id):
 
 
 def create_checkout_session(payment_id, description, unit_price, quantity, frontend_url):
-    """Creates the embedded payment session and returns {"session_id", "client_secret", "ui_mode"}."""
+    """Creates the embedded payment session and returns
+    {"session_id", "client_secret", "ui_mode", "expires_at"} (expires_at as a UTC timestamp)."""
+    expires_at = int(time.time()) + SESSION_LIFETIME_MINUTES * 60
     data = {
         "mode": "payment",
         "client_reference_id": str(payment_id),
@@ -83,7 +88,7 @@ def create_checkout_session(payment_id, description, unit_price, quantity, front
         "line_items[0][price_data][unit_amount]": str(unit_price * 100),
         "line_items[0][price_data][product_data][name]": description,
         "return_url": f"{frontend_url}/?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
-        "expires_at": str(int(time.time()) + SESSION_LIFETIME_MINUTES * 60 + 60),
+        "expires_at": str(expires_at),
     }
     last_error = None
     for ui_mode in EMBEDDED_UI_MODES:
@@ -94,7 +99,12 @@ def create_checkout_session(payment_id, description, unit_price, quantity, front
                 raise
             last_error = error
             continue
-        return {"session_id": session["id"], "client_secret": session["client_secret"], "ui_mode": ui_mode}
+        return {
+            "session_id": session["id"],
+            "client_secret": session["client_secret"],
+            "ui_mode": ui_mode,
+            "expires_at": session.get("expires_at", expires_at),
+        }
     raise last_error
 
 
@@ -107,6 +117,7 @@ def get_checkout_session(session_id):
         "is_open": session.get("status") == SESSION_OPEN,
         "client_secret": session.get("client_secret"),
         "ui_mode": session.get("ui_mode"),
+        "payment_intent": session.get("payment_intent"),
     }
 
 
@@ -116,3 +127,50 @@ def expire_checkout_session(session_id):
         _send_request("POST", "/checkout/sessions/" + _check_session_id(session_id) + "/expire")
     except PaymentError:
         pass  # it was already expired or paid
+
+
+def close_session_and_check(session_id):
+    """Closes a payment session so it can no longer be paid, then says whether it was paid:
+    "paid", "not_paid" or "unknown" (Stripe did not answer)."""
+    expire_checkout_session(session_id)
+    try:
+        session = get_checkout_session(session_id)
+    except PaymentError:
+        return "unknown"
+    return "paid" if session["paid"] else "not_paid"
+
+
+def refund_session(session_id):
+    """Gives the whole payment of a session back to the customer."""
+    session = get_checkout_session(session_id)
+    if not session["payment_intent"]:
+        raise PaymentError("The session has no payment to refund")
+    _send_request("POST", "/refunds", {"payment_intent": session["payment_intent"]})
+
+
+def read_webhook_event(payload, signature_header):
+    """Checks that a webhook really comes from Stripe (HMAC-SHA256 signature with the
+    webhook secret) and returns the event. Raises PaymentError if the signature is wrong."""
+    if not config.STRIPE_WEBHOOK_SECRET:
+        raise PaymentError("Missing environment variable STRIPE_WEBHOOK_SECRET")
+    timestamp, signatures = None, []
+    for part in (signature_header or "").split(","):
+        key, _, value = part.strip().partition("=")
+        if key == "t":
+            timestamp = value
+        elif key == "v1":
+            signatures.append(value)
+    if not timestamp or not signatures:
+        raise PaymentError("Missing webhook signature")
+    try:
+        age = abs(time.time() - int(timestamp))
+    except ValueError:
+        raise PaymentError("Invalid webhook timestamp")
+    if age > WEBHOOK_TOLERANCE_SECONDS:
+        raise PaymentError("Webhook timestamp is too old")
+
+    signed_content = timestamp.encode() + b"." + payload
+    expected = hmac.new(config.STRIPE_WEBHOOK_SECRET.encode(), signed_content, hashlib.sha256).hexdigest()
+    if not any(hmac.compare_digest(expected, signature) for signature in signatures):
+        raise PaymentError("Invalid webhook signature")
+    return json.loads(payload)
