@@ -266,6 +266,13 @@ class PurchasesDatabaseTest(unittest.TestCase):
         self.assertEqual([t["seat"] for t in history[0]["tickets"]], [20, 21])
         self.assertEqual(history[0]["total"], history[0]["unit_price"] * 2)
 
+    def test_document_type_is_saved_and_shown_in_the_history(self):
+        traveler = {"seat": 23, "name": "John Smith", "document_type": "PA", "document": "X1234567"}
+        reservation = purchases.reserve_seats(self.ana, 18, self.travel_date, [traveler, passenger(24)])
+        self.assertEqual([p["document_type"] for p in reservation["passengers"]], ["PA", "CC"])
+        tickets = purchases.get_my_tickets(self.ana)[0]["tickets"]
+        self.assertEqual([(t["document_type"], t["document"]) for t in tickets], [("PA", "X1234567"), ("CC", "1085123456")])
+
     def test_each_purchase_gets_its_own_booking_code(self):
         first = self.reserve(self.ana, [22])
         second = purchases.reserve_seats(self.luis, 18, self.travel_date, [passenger(1)])
