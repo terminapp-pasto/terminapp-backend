@@ -2,11 +2,12 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ai.gemini import AIError
 from ai.orchestrator import generate_reply
+from routes.dependencies import limit_chat
 from services.validation import CHAT_MAX_MESSAGES, CHAT_MESSAGE_MAX_LENGTH
 
 router = APIRouter(tags=["AI chat"])
@@ -21,7 +22,11 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=CHAT_MAX_MESSAGES)
 
 
-@router.post("/chat", summary="Answers the conversation using the AI and the search engine")
+@router.post(
+    "/chat",
+    summary="Answers the conversation using the AI and the search engine",
+    dependencies=[Depends(limit_chat)],
+)
 def chat(request: ChatRequest):
     try:
         return generate_reply([message.model_dump() for message in request.messages])

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from authentication.tokens import create_token
 from authentication.utilities import encrypt_password, verify_password
-from routes.dependencies import get_current_user
+from routes.dependencies import get_current_user, limit_login, limit_register
 from services.users import create_user, find_user_by_email
 from services.validation import (
     EMAIL_MAX_LENGTH, EMAIL_RULE, NAME_MAX_LENGTH, NAME_RULE, PASSWORD_MAX_LENGTH, PASSWORD_RULE,
@@ -32,7 +32,12 @@ def build_session_response(user):
     return {"token": create_token(user["id"], user["name"]), "user": public_user}
 
 
-@router.post("/register", status_code=201, summary="Creates an account and returns a token")
+@router.post(
+    "/register",
+    status_code=201,
+    summary="Creates an account and returns a token",
+    dependencies=[Depends(limit_register)],
+)
 def register(request: RegisterRequest):
     name = normalize_spaces(request.name)
     email = request.email.strip().lower()
@@ -50,7 +55,11 @@ def register(request: RegisterRequest):
     return build_session_response(user)
 
 
-@router.post("/login", summary="Logs in and returns a 24-hour JWT token")
+@router.post(
+    "/login",
+    summary="Logs in and returns a 24-hour JWT token",
+    dependencies=[Depends(limit_login)],
+)
 def login(request: LoginRequest):
     user = find_user_by_email(request.email.strip().lower())
     # Same message for a wrong email or password, so we never reveal which emails exist
