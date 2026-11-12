@@ -40,7 +40,9 @@ CREATE TABLE payments (
     status TEXT NOT NULL DEFAULT 'PENDING',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     -- when the open Stripe session expires: the purchase is held exactly until then
-    expires_at TIMESTAMPTZ
+    expires_at TIMESTAMPTZ,
+    -- code the traveller shows to board, for example "K7M2QX"
+    booking_code VARCHAR(6) UNIQUE
 );
 
 CREATE TABLE conversations (
