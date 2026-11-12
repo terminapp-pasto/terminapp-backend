@@ -12,6 +12,7 @@ from services.search import SORT_BY_PRICE, SORT_BY_TIME, search_departures
 ORIGIN = "Pasto"
 SEARCH_TICKETS = "search_tickets"
 LIST_DESTINATIONS = "list_destinations"
+DESTINATION_MAX_LENGTH = 40   # longer names are not towns and would make the typo check slow
 
 # Description of each tool in the format Gemini understands.
 TOOL_DECLARATIONS = [
@@ -63,6 +64,12 @@ def parse_time_to_minutes(text):
 
 
 def search_tickets(destination, from_time="00:00", sort_by=SORT_BY_TIME, date=""):
+    destination = destination.strip()
+    if not destination or len(destination) > DESTINATION_MAX_LENGTH:
+        return {
+            "error": "That is not a valid town name.",
+            "available_destinations": list_destinations()["destinations"],
+        }
     try:
         travel_date = parse_travel_date(date)
     except InvalidDateError as error:
