@@ -124,7 +124,7 @@ The 10 structures are built from scratch in `structs/`, with our own linked node
 | 5 | N-ary tree | `nary_tree.py` | Hierarchy terminal → companies → routes → schedules | Traversal O(n) |
 | 6 | Hash table with chaining | `hash_table.py` | A bus seat map (number → FREE/TAKEN) and grouping the history by purchase | Insert, find and remove O(1) on average |
 | 7 | Stack | `stack.py` | Undo: if one of several seats is already taken, the previous ones are released in reverse order | Push and pop O(1) |
-| 8 | Queue | `queue.py` | Pending reservations in arrival order; those unpaid after 15 minutes expire | Enqueue and dequeue O(1) |
+| 8 | Queue | `queue.py` | Pending reservations in deadline order; those unpaid after 15 minutes expire. Also the request times of the rate limiter | Enqueue and dequeue O(1) |
 | 9 | State machine | `state_machine.py` | Ticket life cycle: SELECTING → RESERVED → PAYING → PAID, or CANCELLED / EXPIRED | Transition O(t) |
 | 10 | Doubly linked list | `doubly_linked_list.py` | Purchase history, walkable from newest to oldest and back | Add and remove O(1), traverse O(n) |
 
@@ -138,7 +138,9 @@ stateDiagram-v2
     RESERVED --> CANCELLED: cancel
     PAYING --> CANCELLED: cancel
     RESERVED --> EXPIRED: expire (15 min)
-    PAYING --> EXPIRED: expire (45 min)
+    PAYING --> EXPIRED: expire (when the Stripe session ends, 31 min)
+    EXPIRED --> PAID: recover_payment (Stripe says it was paid)
+    CANCELLED --> PAID: recover_payment
     PAID --> [*]
 ```
 
