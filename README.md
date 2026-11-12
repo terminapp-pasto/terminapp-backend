@@ -79,6 +79,29 @@ because TerminAPP is used by travellers in Colombia.
   the previous pending purchase is cancelled and its Stripe session closed. When paying, an open session is reused.
 - **Payments are confirmed by asking Stripe**, never by trusting that the user came back to the page.
 
+## Security
+
+- **Keys only in environment variables** (`.env` locally, Render in production). `.env` is in `.gitignore`, and
+  Stripe always runs with test keys (`sk_test_...`).
+- **Passwords** are stored with PBKDF2 (salted hash), never in plain text. Sessions use JWT tokens signed with
+  `TOKEN_SECRET` that expire after 24 hours.
+- **Rate limits** (`services/rate_limit.py`, built with our own hash table and queue): too many attempts in a row
+  answer `429` with how many seconds to wait.
+
+  | Action | Limit |
+  |---|---|
+  | Log in | 5 per minute |
+  | Create an account | 3 per 10 minutes |
+  | Chat with the AI | 10 per minute |
+  | Reserve seats | 10 per 10 minutes |
+  | Start a payment | 20 per 10 minutes |
+- **Stripe webhook** (`POST /stripe/webhook`): the HMAC-SHA256 signature is checked with `STRIPE_WEBHOOK_SECRET`
+  and events older than 5 minutes are rejected, so nobody can fake a "paid" message.
+- **A late payment is never lost.** Before expiring a purchase that was paying, the backend asks Stripe; if it was
+  paid it is confirmed, and if its seats were already sold to someone else the money is refunded automatically.
+- **CORS** only allows the Vercel site and `http://localhost:5173`. `/health` only says whether the database answers,
+  without revealing configuration.
+
 ## Running it locally
 1. Copy `.env.example` to `.env` and fill in `DATABASE_URL`, `GEMINI_API_KEY`, `TOKEN_SECRET`, `STRIPE_SECRET_KEY` and `FRONTEND_URL` (never commit it).
 2. Activate the environment: `.\venv\Scripts\Activate.ps1`
