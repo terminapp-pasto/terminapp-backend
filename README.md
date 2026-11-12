@@ -143,7 +143,15 @@ If everything is fine, the last line says `OK`.
 
 ## Database
 
-Entity-relationship diagram of the 12 PostgreSQL tables. A new database is created with scripts `db/01` to `db/04`; a database that already existed in Spanish is translated to English, without losing data, with `db/05_translate_to_english.sql`. The first 5 tables support the search; the rest support authentication, purchases, payments and the AI chat.
+Entity-relationship diagram of the 12 PostgreSQL tables. A new database is created with scripts `db/01` to `db/04`; a database that already existed in Spanish is translated to English, without losing data, with `db/05_translate_to_english.sql`.
+
+The live database is updated with these additive scripts, run once and in order (they never delete data):
+
+| Script | What it adds |
+|---|---|
+| `06_payment_expiration.sql` | `payments.expires_at`: when the open Stripe payment, and the seat hold, ends |
+| `07_booking_codes.sql` | `payments.booking_code` with a unique index; existing purchases get a code too |
+| `08_document_types.sql` | `passengers.document_type` (`CC`, `TI`, `CE`, `PA`); existing passengers get `CC` | The first 5 tables support the search; the rest support authentication, purchases, payments and the AI chat.
 
 ```mermaid
 erDiagram
@@ -204,6 +212,7 @@ erDiagram
         int id PK
         int user_id FK
         varchar50 name
+        varchar2 document_type
         varchar12 document
     }
     BUSES {
@@ -220,9 +229,11 @@ erDiagram
     PAYMENTS {
         int id PK
         text stripe_session_id
+        varchar6 booking_code
         int amount
         text status
         timestamptz created_at
+        timestamptz expires_at
     }
     CONVERSATIONS {
         int id PK
