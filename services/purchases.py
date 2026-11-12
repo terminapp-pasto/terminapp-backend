@@ -15,6 +15,7 @@ Concurrency (two people asking for the last seat at the same time):
    tickets from having the same seat on the same departure and date.
 """
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import psycopg
@@ -51,6 +52,10 @@ PAYMENT_PAID = "PAID"
 PAYMENT_CANCELLED = "CANCELLED"
 PAYMENT_EXPIRED = "EXPIRED"
 PAYMENT_REFUNDED = "REFUNDED"
+
+BOOKING_CODE_LENGTH = 6
+# Letters and digits that cannot be confused when read aloud or on paper (no O/0, I/1)
+BOOKING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 # Answers of the Stripe check made before expiring an open payment
 SESSION_PAID = "paid"
@@ -164,6 +169,20 @@ def expiration_time(status, created_at, payment_expires_at=None):
     else:
         return None
     return deadline.astimezone(COLOMBIA_TIMEZONE)
+
+
+def generate_booking_code():
+    """Random code like "K7M2QX": 32^6 ≈ 1,000 million options, so it cannot be guessed."""
+    return "".join(secrets.choice(BOOKING_CODE_ALPHABET) for _ in range(BOOKING_CODE_LENGTH))
+
+
+def _new_booking_code(cursor):
+    """A booking code that no other purchase has."""
+    while True:
+        code = generate_booking_code()
+        cursor.execute("SELECT 1 FROM payments WHERE booking_code = %s;", (code,))
+        if cursor.fetchone() is None:
+            return code
 
 
 def clean_passengers(passengers):
@@ -362,8 +381,10 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
             seat_ids.put(number, seat_id)
 
         total = departure["price"] * len(numbers)
+        booking_code = _new_booking_code(cursor)
         cursor.execute(
-            "INSERT INTO payments (amount, status) VALUES (%s, 'PENDING') RETURNING id, created_at;", (total,)
+            "INSERT INTO payments (amount, status, booking_code) VALUES (%s, 'PENDING', %s) RETURNING id, created_at;",
+            (total, booking_code),
         )
         payment_id, created_at = cursor.fetchone()
 
@@ -386,6 +407,7 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
 
     return {
         "payment_id": payment_id,
+        "booking_code": booking_code,
         "status": status,
         "departure": departure,
         "date": travel_date.isoformat(),
@@ -513,7 +535,7 @@ def cancel_purchase(user_id, payment_id):
 MY_TICKETS_QUERY = """
     SELECT t.id, t.payment_id, t.status, t.travel_date, s.departure_time, c.name,
            o.name, d.name, st.number, p.name, p.document, s.price, pm.amount,
-           pm.created_at, r.duration_min, pm.expires_at
+           pm.created_at, r.duration_min, pm.expires_at, pm.booking_code
     FROM tickets t
     JOIN passengers p ON p.id = t.passenger_id
     JOIN seats st ON st.id = t.seat_id
@@ -539,12 +561,14 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
     purchases_in_order = []
     for row in rows:
         (ticket_id, payment_id, status, travel_date, departure_time, company, origin, destination,
-         seat, passenger, document, price, amount, purchased_at, duration_min, payment_expires_at) = row
+         seat, passenger, document, price, amount, purchased_at, duration_min, payment_expires_at,
+         booking_code) = row
         purchase = purchases_by_payment.get(payment_id)
         if purchase is None:
             expires_at = expiration_time(status, purchased_at, payment_expires_at)
             purchase = {
                 "payment_id": payment_id,
+                "booking_code": booking_code,
                 "status": status,
                 "date": travel_date.isoformat(),
                 "departure_time": departure_time.strftime("%H:%M"),
