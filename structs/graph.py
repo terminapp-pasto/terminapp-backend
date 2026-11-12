@@ -6,6 +6,8 @@ duration in minutes.
 
 from structs.matrix import Matrix
 
+MAX_NAME_LENGTH_FOR_TYPOS = 40
+
 
 def normalize(text):
     text = text.strip().lower()
@@ -112,6 +114,8 @@ class Graph:
     def find_closest(self, name):
         """The town with the most similar name, to fix typos such as "bodota".
         Accepts at most 2 different letters (and no more than a third of the name)."""
+        if len(normalize(name)) > MAX_NAME_LENGTH_FOR_TYPOS:
+            return None  # far longer than any town: comparing would only waste time
         best, smallest = None, None
         vertex = self.first_vertex
         while vertex is not None:

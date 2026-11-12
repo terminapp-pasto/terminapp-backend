@@ -56,6 +56,9 @@ class GraphTest(unittest.TestCase):
         self.assertIsNone(graph.find_closest("Medellín"))
         self.assertIsNone(graph.find_closest("xyz"))
 
+    def test_does_not_compare_huge_names(self):
+        self.assertIsNone(sample_graph().find_closest("x" * 1000))
+
     def test_describe_lists_routes(self):
         self.assertIn("Cali → (sin salidas)", sample_graph().describe())
 
