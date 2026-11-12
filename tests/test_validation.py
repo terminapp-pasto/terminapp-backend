@@ -1,7 +1,10 @@
 """Tests for form validation (services/validation.py) and passengers."""
 import unittest
 
-from services.purchases import MAX_SEATS_PER_PURCHASE, PurchaseError, clean_passengers
+from services.purchases import (
+    BOOKING_CODE_ALPHABET, BOOKING_CODE_LENGTH, MAX_SEATS_PER_PURCHASE, PurchaseError, clean_passengers,
+    generate_booking_code,
+)
 from services.validation import (
     is_valid_document, is_valid_email, is_valid_name, is_valid_password, normalize_spaces,
 )
@@ -53,6 +56,19 @@ class PassengersTest(unittest.TestCase):
         with self.assertRaises(PurchaseError) as context:
             clean_passengers([self.passenger(1), self.passenger(2, document="abc")])
         self.assertIn("Pasajero 2", context.exception.message)
+
+
+class BookingCodeTest(unittest.TestCase):
+    def test_code_has_six_unambiguous_characters(self):
+        for _ in range(200):
+            code = generate_booking_code()
+            self.assertEqual(len(code), BOOKING_CODE_LENGTH)
+            self.assertTrue(all(character in BOOKING_CODE_ALPHABET for character in code))
+            self.assertFalse(set(code) & set("O0I1"))
+
+    def test_codes_are_not_repeated(self):
+        codes = {generate_booking_code() for _ in range(1000)}
+        self.assertGreater(len(codes), 995)
 
 
 if __name__ == "__main__":
