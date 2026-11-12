@@ -266,6 +266,13 @@ class PurchasesDatabaseTest(unittest.TestCase):
         self.assertEqual([t["seat"] for t in history[0]["tickets"]], [20, 21])
         self.assertEqual(history[0]["total"], history[0]["unit_price"] * 2)
 
+    def test_each_purchase_gets_its_own_booking_code(self):
+        first = self.reserve(self.ana, [22])
+        second = purchases.reserve_seats(self.luis, 18, self.travel_date, [passenger(1)])
+        self.assertRegex(first["booking_code"], r"^[A-Z2-9]{6}$")
+        self.assertNotEqual(first["booking_code"], second["booking_code"])
+        self.assertEqual(purchases.get_my_tickets(self.ana)[0]["booking_code"], first["booking_code"])
+
 
 if __name__ == "__main__":
     unittest.main()
