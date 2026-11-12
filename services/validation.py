@@ -25,6 +25,17 @@ NAME_PATTERN = re.compile(
 )
 # Digits only, 5 to 12 (national ID, identity card or numeric passport).
 DOCUMENT_PATTERN = re.compile(rf"^\d{{{DOCUMENT_MIN_LENGTH},{DOCUMENT_MAX_LENGTH}}}$")
+
+# Colombian identity documents accepted for bus travel: code -> (name, pattern, rule).
+# A passport may have letters; the other documents are digits only.
+DEFAULT_DOCUMENT_TYPE = "CC"
+DOCUMENT_TYPES = {
+    "CC": ("Cédula de ciudadanía", re.compile(r"^\d{5,10}$"), "La cédula tiene solo números, de 5 a 10 dígitos"),
+    "TI": ("Tarjeta de identidad", re.compile(r"^\d{10,11}$"), "La tarjeta de identidad tiene 10 u 11 dígitos"),
+    "CE": ("Cédula de extranjería", re.compile(r"^\d{5,12}$"), "La cédula de extranjería tiene de 5 a 12 dígitos"),
+    "PA": ("Pasaporte", re.compile(r"^[A-Z0-9]{5,12}$"), "El pasaporte tiene letras y números, de 5 a 12 caracteres"),
+}
+DOCUMENT_TYPE_RULE = "El tipo de documento debe ser CC, TI, CE o PA"
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 NAME_RULE = f"El nombre solo puede tener letras y espacios, de {NAME_MIN_LENGTH} a {NAME_MAX_LENGTH} caracteres"
@@ -44,6 +55,24 @@ def is_valid_name(name):
 
 def is_valid_document(document):
     return bool(DOCUMENT_PATTERN.match(document))
+
+
+def is_valid_document_type(document_type):
+    return document_type in DOCUMENT_TYPES
+
+
+def normalize_document(document):
+    """Removes spaces, dots and hyphens ("1.085.123-4" -> "10851234") and uppercases passport letters."""
+    return re.sub(r"[\s.-]", "", str(document)).upper()
+
+
+def document_rule(document_type):
+    """The message shown when a document does not match its type."""
+    return DOCUMENT_TYPES[document_type][2]
+
+
+def is_valid_document_of_type(document, document_type):
+    return is_valid_document_type(document_type) and bool(DOCUMENT_TYPES[document_type][1].match(document))
 
 
 def is_valid_email(email):
