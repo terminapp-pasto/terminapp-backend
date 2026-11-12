@@ -14,7 +14,7 @@ from payments.stripe_client import (
 from routes.dependencies import get_current_user, limit_payments, limit_purchases, require_date
 from services import purchases
 from services.dates import COLOMBIA_TIMEZONE
-from services.validation import DOCUMENT_MAX_LENGTH, NAME_MAX_LENGTH
+from services.validation import DEFAULT_DOCUMENT_TYPE, DOCUMENT_MAX_LENGTH, NAME_MAX_LENGTH
 
 router = APIRouter(tags=["Purchase"])
 
@@ -26,6 +26,7 @@ def to_http_error(error):
 class PassengerData(BaseModel):
     seat: int = Field(..., ge=1, le=100)
     name: str = Field(..., max_length=NAME_MAX_LENGTH * 2)
+    document_type: str = Field(DEFAULT_DOCUMENT_TYPE, max_length=2, description="CC, TI, CE or PA")
     document: str = Field(..., max_length=DOCUMENT_MAX_LENGTH * 2)
 
 
