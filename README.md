@@ -170,7 +170,9 @@ If everything is fine, the last line says `OK`.
 
 Entity-relationship diagram of the 12 PostgreSQL tables. A new database is created with scripts `db/01` to `db/04`; a database that already existed in Spanish is translated to English, without losing data, with `db/05_translate_to_english.sql`.
 
-The live database is updated with these additive scripts, run once and in order (they never delete data):
+The live database is updated with these additive scripts. The backend applies the ones it has not run yet
+when it starts (`services/migrations.py`, recorded in the `applied_migrations` table), so a new version never
+runs without its columns. They can also be run by hand; running them twice is harmless:
 
 | Script | What it adds |
 |---|---|
