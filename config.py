@@ -28,6 +28,8 @@ TOKEN_SECRET = os.getenv("TOKEN_SECRET")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_API_URL = os.getenv("STRIPE_API_URL", "https://api.stripe.com/v1")
 STRIPE_CURRENCY = os.getenv("STRIPE_CURRENCY", "cop")
+# Signing secret of the Stripe webhook (whsec_...). Without it the webhook route is disabled.
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 # Where the user returns after paying, and who may call the API
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://terminapp-frontend.vercel.app").rstrip("/")
