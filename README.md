@@ -34,7 +34,7 @@ structs/             the 10 data structures built from scratch
 authentication/      utilities.py (encrypt and verify passwords) and tokens.py (JWT)
 ai/                  gemini.py (provider), tools.py (tools), orchestrator.py (the chat)
 payments/            stripe_client.py (embedded Stripe payment in test mode)
-db/                  SQL scripts 01 to 05
+db/                  SQL scripts 01 to 08
 tests/               automated tests
 ```
 
@@ -57,10 +57,17 @@ because TerminAPP is used by travellers in Colombia.
 | POST | `/purchases/{payment_id}/pay` | 🔒 Prepares the embedded Stripe payment; reuses an open one if it exists |
 | GET | `/purchases/confirm?session_id=...` | 🔒 Asks Stripe whether it was paid and confirms the tickets |
 | POST | `/purchases/{payment_id}/cancel` | 🔒 Cancels an unpaid purchase and frees the seats |
-| GET | `/my-tickets?order=newest` | 🔒 The user's purchase history (`newest` or `oldest`) |
+| GET | `/my-tickets?order=newest` | 🔒 The user's purchase history (`newest` or `oldest`), with each booking code |
+| POST | `/stripe/webhook` | Stripe calls it when a payment is completed (signed with `STRIPE_WEBHOOK_SECRET`) |
 
 ## Purchase rules
 - **One passenger per seat.** Buying 3 seats asks for 3 names and 3 documents.
+- **Document types.** Each passenger has a document type: `CC` (cédula, 5 to 10 digits), `TI` (tarjeta de
+  identidad, 10 or 11 digits), `CE` (cédula de extranjería, 5 to 12 digits) or `PA` (passport, letters and digits,
+  5 to 12). Dots, spaces and hyphens are removed before checking (`1.085.123.456` → `1085123456`).
+- **Booking code.** Every purchase gets a random 6-character code such as `K7M2QX`, without the characters that
+  are easy to confuse (O/0, I/1). It is what the passenger shows when boarding.
+- **At most 2 unpaid purchases per user**, so nobody can hold half a bus without paying.
 - **Validation with regular expressions** (in the frontend and again in the backend, `services/validation.py`):
   name only letters and spaces, 3 to 50 characters; document only digits, 5 to 12; email up to 100 characters;
   password 8 to 72. A huge text is rejected before it reaches the database.
