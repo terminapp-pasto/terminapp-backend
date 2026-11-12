@@ -34,7 +34,7 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 # Where the user returns after paying, and who may call the API
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://terminapp-frontend.vercel.app").rstrip("/")
 ALLOWED_ORIGINS_PATTERN = os.getenv(
-    "ALLOWED_ORIGINS_PATTERN", r"https://terminapp-frontend.*\.vercel\.app|http://localhost:5173"
+    "ALLOWED_ORIGINS_PATTERN", r"https://terminapp-frontend\.vercel\.app|http://localhost:5173"
 )
 
 # Test account for the professor (only created when both variables are set)
