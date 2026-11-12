@@ -38,7 +38,9 @@ CREATE TABLE payments (
     stripe_session_id TEXT UNIQUE,
     amount INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'PENDING',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- when the open Stripe session expires: the purchase is held exactly until then
+    expires_at TIMESTAMPTZ
 );
 
 CREATE TABLE conversations (
