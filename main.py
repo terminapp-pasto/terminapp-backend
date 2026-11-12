@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 import config
 from authentication.utilities import encrypt_password
 from routes import auth, chat, purchases, search, system
+from services.migrations import apply_pending_migrations
 from services.users import upsert_user
 
 API_VERSION = "2.0.0"
@@ -36,8 +37,20 @@ def create_test_account():
         print(f"Could not create the test account: {error}")
 
 
+def update_database():
+    """Adds the columns that this version needs, if the database does not have them yet."""
+    try:
+        applied = apply_pending_migrations()
+        if applied:
+            print(f"Database scripts applied: {', '.join(applied)}")
+    except (psycopg.Error, OSError) as error:
+        # If the database does not answer, the API starts anyway
+        print(f"Could not update the database: {error}")
+
+
 @asynccontextmanager
 async def on_startup(_app):
+    update_database()
     create_test_account()
     yield
 
