@@ -10,7 +10,7 @@ the tests drop and recreate every table in it.
 import os
 import threading
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import config
@@ -20,6 +20,7 @@ from services.dates import today_in_colombia
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 SCRIPTS = ("01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql")
+SESSION_ID = "cs_test_1"
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
 CALI_SCHEDULE_ID = 19        # Bolivariano Pasto → Cali 20:30, 40-seat bus
 LAST_SEAT = 40
@@ -37,10 +38,12 @@ class PurchasesDatabaseTest(unittest.TestCase):
             raise RuntimeError("TEST_DATABASE_URL cannot be the production database")
         cls.original_url = config.DATABASE_URL
         config.DATABASE_URL = TEST_DATABASE_URL
+        cls.original_checker = purchases.stripe_session_checker
 
     @classmethod
     def tearDownClass(cls):
         config.DATABASE_URL = cls.original_url
+        purchases.stripe_session_checker = cls.original_checker
 
     def setUp(self):
         with connect() as connection, connection.cursor() as cursor:
@@ -52,12 +55,27 @@ class PurchasesDatabaseTest(unittest.TestCase):
                 "('Ana', 'ana@prueba.co', 'x'), ('Luis', 'luis@prueba.co', 'x'), ('Eva', 'eva@prueba.co', 'x');"
             )
         self.ana, self.luis, self.eva = 1, 2, 3
+        self.stripe_answer = purchases.SESSION_NOT_PAID
+        self.checked_sessions = []
+
+        def fake_stripe(session_id):
+            self.checked_sessions.append(session_id)
+            return self.stripe_answer
+
+        purchases.stripe_session_checker = fake_stripe
         self.travel_date = today_in_colombia() + timedelta(days=1)
 
+    def open_payment(self, purchase, minutes):
+        """Simulates opening the Stripe payment, with a session that lives `minutes` more."""
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        purchases.mark_as_paying(purchase["user_id"], purchase["payment_id"], SESSION_ID, expires_at)
+
     def reserve(self, user_id, seats):
-        return purchases.reserve_seats(
+        purchase = purchases.reserve_seats(
             user_id, CALI_SCHEDULE_ID, self.travel_date, [passenger(seat) for seat in seats]
         )
+        purchase["user_id"] = user_id
+        return purchase
 
     def fill_bus_except_last_seat(self):
         purchases.reserve_seats(
@@ -171,7 +189,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
 
     def test_paid_purchase_cannot_be_cancelled(self):
         purchase = self.reserve(self.ana, [11])
-        purchases.mark_as_paying(self.ana, purchase["payment_id"], "cs_test_1")
+        self.open_payment(purchase, minutes=31)
         self.assertEqual(purchases.mark_as_paid(self.ana, purchase["payment_id"]), "PAID")
         self.assertEqual(purchases.mark_as_paid(self.ana, purchase["payment_id"]), "PAID")  # reloading the page
         with self.assertRaises(purchases.PurchaseError):
@@ -183,6 +201,63 @@ class PurchasesDatabaseTest(unittest.TestCase):
             cursor.execute("UPDATE tickets SET created_at = NOW() - INTERVAL '20 minutes';")
         self.reserve(self.luis, [12])
         self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "EXPIRED")
+
+    # ---------------- Payments that arrive late (audit finding 1) ----------------
+
+    def test_open_payment_lives_as_long_as_its_stripe_session(self):
+        purchase = self.reserve(self.ana, [13])
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute("UPDATE tickets SET created_at = NOW() - INTERVAL '40 minutes';")
+        self.open_payment(purchase, minutes=10)   # the Stripe session is still open
+        self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "PAYING")
+        self.assertEqual(self.checked_sessions, [])
+
+    def test_unpaid_session_is_closed_and_the_seat_freed(self):
+        purchase = self.reserve(self.ana, [14])
+        self.open_payment(purchase, minutes=-1)   # the session already ended
+        self.reserve(self.luis, [14])              # the seat is free again
+        self.assertEqual(self.checked_sessions, [SESSION_ID])
+        self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "EXPIRED")
+
+    def test_paid_session_is_confirmed_instead_of_expired(self):
+        purchase = self.reserve(self.ana, [15])
+        self.open_payment(purchase, minutes=-1)
+        self.stripe_answer = purchases.SESSION_PAID   # paid at the last second, user never came back
+        with self.assertRaises(purchases.PurchaseError):
+            self.reserve(self.luis, [15])
+        self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "PAID")
+
+    def test_stripe_down_keeps_the_seats(self):
+        purchase = self.reserve(self.ana, [16])
+        self.open_payment(purchase, minutes=-1)
+        self.stripe_answer = purchases.SESSION_UNKNOWN
+        self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "PAYING")
+
+    def test_late_payment_recovers_free_seats(self):
+        purchase = self.reserve(self.ana, [17])
+        self.open_payment(purchase, minutes=-1)
+        purchases.get_my_tickets(self.ana)            # expires it
+        status = purchases.confirm_payment(purchase["payment_id"])   # webhook arrives late
+        self.assertEqual(status, "PAID")
+
+    def test_late_payment_for_sold_seats_asks_for_a_refund(self):
+        purchase = self.reserve(self.ana, [18])
+        self.open_payment(purchase, minutes=-1)
+        self.reserve(self.luis, [18])                 # someone else bought the seat
+        with self.assertRaises(purchases.SeatsLostError) as context:
+            purchases.confirm_payment(purchase["payment_id"])
+        self.assertEqual(context.exception.stripe_session_id, SESSION_ID)
+        self.assertEqual(purchases.get_my_tickets(self.luis)[0]["status"], "RESERVED")
+
+    # ---------------- Seat hoarding (audit finding 2) ----------------
+
+    def test_one_user_cannot_hold_more_than_two_unpaid_purchases(self):
+        purchases.reserve_seats(self.ana, 18, self.travel_date, [passenger(1)])
+        purchases.reserve_seats(self.ana, 19, self.travel_date, [passenger(1)])
+        with self.assertRaises(purchases.PurchaseError) as context:
+            purchases.reserve_seats(self.ana, 20, self.travel_date, [passenger(1)])
+        self.assertEqual(context.exception.status_code, 409)
+        purchases.reserve_seats(self.ana, 19, self.travel_date, [passenger(2)])   # same trip replaces: allowed
 
     def test_history_groups_passengers_by_purchase(self):
         self.reserve(self.ana, [20, 21])

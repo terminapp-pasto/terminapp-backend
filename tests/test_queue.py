@@ -23,17 +23,20 @@ class QueueTest(unittest.TestCase):
         queue.enqueue("b")
         self.assertEqual(queue.dequeue(), "b")
 
-    def test_expires_only_old_reservations(self):
+    def test_expires_only_purchases_past_their_deadline(self):
         now = datetime.now(timezone.utc)
-        minutes_ago = lambda minutes: now - timedelta(minutes=minutes)
-        pending = [
-            (1, "RESERVED", minutes_ago(50)),
-            (2, "PAYING", minutes_ago(46)),    # more than 45: expires
-            (3, "RESERVED", minutes_ago(20)),  # more than 15: expires
-            (4, "PAYING", minutes_ago(30)),    # can still pay
-            (5, "RESERVED", minutes_ago(5)),
+        minutes_from_now = lambda minutes: now + timedelta(minutes=minutes)
+        pending = [  # sorted by deadline, earliest first
+            (1, "RESERVED", minutes_from_now(-30)),
+            (2, "PAYING", minutes_from_now(-1)),
+            (3, "RESERVED", minutes_from_now(2)),   # still on time: the queue stops here
+            (4, "PAYING", minutes_from_now(20)),
         ]
-        self.assertEqual(sorted(find_expired(pending, now)), [1, 2, 3])
+        self.assertEqual([ticket[0] for ticket in find_expired(pending, now)], [1, 2])
+
+    def test_nothing_expires_when_everyone_is_on_time(self):
+        now = datetime.now(timezone.utc)
+        self.assertEqual(find_expired([(1, "PAYING", now + timedelta(minutes=5))], now), [])
 
 
 if __name__ == "__main__":
