@@ -15,6 +15,8 @@ CREATE TABLE passengers (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
     name VARCHAR(50) NOT NULL,
+    document_type VARCHAR(2) NOT NULL DEFAULT 'CC'
+        CONSTRAINT valid_document_type CHECK (document_type IN ('CC', 'TI', 'CE', 'PA')),
     document VARCHAR(12) NOT NULL
 );
 
