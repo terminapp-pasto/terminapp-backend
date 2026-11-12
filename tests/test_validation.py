@@ -42,7 +42,7 @@ class PassengersTest(unittest.TestCase):
 
     def test_one_passenger_per_seat(self):
         cleaned = clean_passengers([self.passenger(3), self.passenger(4, "Luis  Gómez", " 12345 ")])
-        self.assertEqual(cleaned, [(3, "Ana Pérez", "1085123456"), (4, "Luis Gómez", "12345")])
+        self.assertEqual(cleaned, [(3, "Ana Pérez", "CC", "1085123456"), (4, "Luis Gómez", "CC", "12345")])
 
     def test_rejects_empty_too_many_or_repeated_seats(self):
         with self.assertRaises(PurchaseError):

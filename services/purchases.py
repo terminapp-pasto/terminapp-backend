@@ -23,7 +23,8 @@ import psycopg
 from services.database import connect
 from services.dates import COLOMBIA_TIMEZONE, SALES_WINDOW_DAYS, now_in_colombia
 from services.validation import (
-    DOCUMENT_RULE, NAME_RULE, is_valid_document, is_valid_name, normalize_spaces,
+    DEFAULT_DOCUMENT_TYPE, DOCUMENT_TYPE_RULE, NAME_RULE, document_rule, is_valid_document_of_type,
+    is_valid_document_type, is_valid_name, normalize_document, normalize_spaces,
 )
 from structs.doubly_linked_list import DoublyLinkedList
 from structs.hash_table import HashTable
@@ -186,7 +187,8 @@ def _new_booking_code(cursor):
 
 
 def clean_passengers(passengers):
-    """Validates the passengers (one per seat) and returns [(seat, name, document)]."""
+    """Validates the passengers (one per seat) and returns [(seat, name, document_type, document)].
+    document_type is optional and defaults to CC (national ID)."""
     if not passengers:
         raise PurchaseError("Elige al menos un asiento")
     if len(passengers) > MAX_SEATS_PER_PURCHASE:
@@ -197,15 +199,18 @@ def clean_passengers(passengers):
     for position, passenger in enumerate(passengers, start=1):
         seat = passenger["seat"]
         name = normalize_spaces(passenger["name"])
-        document = str(passenger["document"]).strip()
+        document_type = str(passenger.get("document_type") or DEFAULT_DOCUMENT_TYPE).upper()
+        document = normalize_document(passenger["document"])
         if seen_seats.contains(seat):
             raise PurchaseError(f"El asiento {seat} está repetido")
         seen_seats.put(seat, True)
         if not is_valid_name(name):
             raise PurchaseError(f"Pasajero {position}: {NAME_RULE}")
-        if not is_valid_document(document):
-            raise PurchaseError(f"Pasajero {position}: {DOCUMENT_RULE}")
-        cleaned.append((seat, name, document))
+        if not is_valid_document_type(document_type):
+            raise PurchaseError(f"Pasajero {position}: {DOCUMENT_TYPE_RULE}")
+        if not is_valid_document_of_type(document, document_type):
+            raise PurchaseError(f"Pasajero {position}: {document_rule(document_type)}")
+        cleaned.append((seat, name, document_type, document))
     return cleaned
 
 
@@ -340,7 +345,7 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
     """Holds the seats (one passenger per seat) for RESERVATION_MINUTES minutes.
     passengers: list of {"seat", "name", "document"}."""
     cleaned = clean_passengers(passengers)
-    numbers = [seat for seat, _, _ in cleaned]
+    numbers = [seat for seat, _, _, _ in cleaned]
 
     with connect() as connection, connection.cursor() as cursor:
         _expire_old_reservations(cursor)
@@ -390,10 +395,11 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
 
         status = next_status(SELECTING, RESERVE)
         try:
-            for number, name, document in cleaned:
+            for number, name, document_type, document in cleaned:
                 cursor.execute(
-                    "INSERT INTO passengers (user_id, name, document) VALUES (%s, %s, %s) RETURNING id;",
-                    (user_id, name, document),
+                    """INSERT INTO passengers (user_id, name, document_type, document)
+                       VALUES (%s, %s, %s, %s) RETURNING id;""",
+                    (user_id, name, document_type, document),
                 )
                 passenger_id = cursor.fetchone()[0]
                 cursor.execute(
@@ -412,7 +418,10 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
         "departure": departure,
         "date": travel_date.isoformat(),
         "seats": sorted(numbers),
-        "passengers": [{"seat": seat, "name": name, "document": document} for seat, name, document in cleaned],
+        "passengers": [
+            {"seat": seat, "name": name, "document_type": document_type, "document": document}
+            for seat, name, document_type, document in cleaned
+        ],
         "total": total,
         "expires_at": expiration_time(status, created_at).isoformat(),
         "replaced_stripe_sessions": replaced_sessions,
@@ -534,7 +543,7 @@ def cancel_purchase(user_id, payment_id):
 
 MY_TICKETS_QUERY = """
     SELECT t.id, t.payment_id, t.status, t.travel_date, s.departure_time, c.name,
-           o.name, d.name, st.number, p.name, p.document, s.price, pm.amount,
+           o.name, d.name, st.number, p.name, p.document_type, p.document, s.price, pm.amount,
            pm.created_at, r.duration_min, pm.expires_at, pm.booking_code
     FROM tickets t
     JOIN passengers p ON p.id = t.passenger_id
@@ -561,7 +570,7 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
     purchases_in_order = []
     for row in rows:
         (ticket_id, payment_id, status, travel_date, departure_time, company, origin, destination,
-         seat, passenger, document, price, amount, purchased_at, duration_min, payment_expires_at,
+         seat, passenger, document_type, document, price, amount, purchased_at, duration_min, payment_expires_at,
          booking_code) = row
         purchase = purchases_by_payment.get(payment_id)
         if purchase is None:
@@ -585,7 +594,8 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
             purchases_by_payment.put(payment_id, purchase)
             purchases_in_order.append(purchase)
         purchase["tickets"].append(
-            {"ticket_id": ticket_id, "seat": seat, "passenger": passenger, "document": document}
+            {"ticket_id": ticket_id, "seat": seat, "passenger": passenger,
+             "document_type": document_type, "document": document}
         )
     return purchase_history(purchases_in_order, order)
 
