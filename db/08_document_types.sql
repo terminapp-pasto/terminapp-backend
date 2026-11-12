@@ -1,8 +1,7 @@
--- 08: document type of each passenger (CC, TI, CE or PA).
---
--- Additive and safe to run on a database that already has data: existing
--- passengers get 'CC' (national ID), which is what every purchase used so far.
--- Run it once, after 07_booking_codes.sql.
+-- Script 8: the document type of each passenger: CC (cédula de ciudadanía),
+-- TI (tarjeta de identidad), CE (cédula de extranjería) or PA (passport).
+-- Safe to run on the live database: existing passengers get 'CC', which is what
+-- every purchase used so far. Run it once, after 07_booking_codes.sql.
 
 ALTER TABLE passengers ADD COLUMN IF NOT EXISTS document_type VARCHAR(2) NOT NULL DEFAULT 'CC';
 
