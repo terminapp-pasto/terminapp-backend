@@ -66,6 +66,7 @@ START_PAYMENT = "start_payment"
 CONFIRM_PAYMENT = "confirm_payment"
 CANCEL = "cancel"
 EXPIRE = "expire"
+RECOVER_PAYMENT = "recover_payment"   # a late payment arrived and the seats were still free
 
 
 def purchase_state_machine(current_state=SELECTING):
@@ -79,4 +80,6 @@ def purchase_state_machine(current_state=SELECTING):
     machine.add_transition(PAYING, CANCEL, CANCELLED)
     machine.add_transition(RESERVED, EXPIRE, EXPIRED)
     machine.add_transition(PAYING, EXPIRE, EXPIRED)
+    machine.add_transition(EXPIRED, RECOVER_PAYMENT, PAID)
+    machine.add_transition(CANCELLED, RECOVER_PAYMENT, PAID)
     return machine
