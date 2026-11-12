@@ -29,13 +29,14 @@ from structs.hash_table import HashTable
 from structs.queue import Queue
 from structs.stack import Stack
 from structs.state_machine import (
-    CANCEL, CONFIRM_PAYMENT, EXPIRE, PAID, PAYING, RESERVE, RESERVED, SELECTING, START_PAYMENT,
-    TransitionError, purchase_state_machine,
+    CANCEL, CONFIRM_PAYMENT, EXPIRE, PAID, PAYING, RECOVER_PAYMENT, RESERVE, RESERVED, SELECTING,
+    START_PAYMENT, TransitionError, purchase_state_machine,
 )
 
-RESERVATION_MINUTES = 15   # time to start paying
-PAYMENT_MINUTES = 45       # total time to finish paying (15 + 30 in Stripe)
+RESERVATION_MINUTES = 15       # time to open the payment after reserving
+PAYMENT_WINDOW_MINUTES = 31    # time to finish paying once the payment is open (Stripe's minimum is 30)
 MAX_SEATS_PER_PURCHASE = 5
+MAX_PENDING_PURCHASES = 2      # unpaid purchases a user may hold at the same time, across all trips
 
 FREE = "FREE"
 TAKEN = "TAKEN"
@@ -49,6 +50,12 @@ PAYMENT_PENDING = "PENDING"
 PAYMENT_PAID = "PAID"
 PAYMENT_CANCELLED = "CANCELLED"
 PAYMENT_EXPIRED = "EXPIRED"
+PAYMENT_REFUNDED = "REFUNDED"
+
+# Answers of the Stripe check made before expiring an open payment
+SESSION_PAID = "paid"
+SESSION_NOT_PAID = "not_paid"
+SESSION_UNKNOWN = "unknown"
 
 
 class PurchaseError(Exception):
@@ -56,6 +63,26 @@ class PurchaseError(Exception):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+
+
+class SeatsLostError(Exception):
+    """A payment arrived after its reservation expired and the seats were sold to someone else.
+    The caller must refund it."""
+
+    def __init__(self, payment_id, stripe_session_id):
+        super().__init__(f"Payment {payment_id} arrived after its seats were sold")
+        self.payment_id = payment_id
+        self.stripe_session_id = stripe_session_id
+
+
+def _default_session_checker(stripe_session_id):
+    # imported here so the purchase logic can be tested without Stripe
+    from payments.stripe_client import close_session_and_check
+    return close_session_and_check(stripe_session_id)
+
+
+# Closes a Stripe session and says whether it was paid. Tests replace it with a fake.
+stripe_session_checker = _default_session_checker
 
 
 # ------------------------------------------------------------------
@@ -92,21 +119,18 @@ def hold_seats(seat_map, numbers):
 
 
 def find_expired(pending_tickets, now):
-    """Receives (id, status, created) sorted from oldest to newest and returns the
-    ids that have expired. It uses one queue per kind of wait: since they are in
-    arrival order, it only looks at the front and stops at the first one still on time."""
-    reserved_queue, paying_queue = Queue(), Queue()
+    """Receives (id, status, deadline) sorted by deadline, earliest first, and returns
+    the ones whose deadline has passed. The queue keeps that order: it only looks at
+    the front and stops at the first one that is still on time."""
+    queue = Queue()
     for ticket in pending_tickets:
-        (reserved_queue if ticket[1] == RESERVED else paying_queue).enqueue(ticket)
+        queue.enqueue(ticket)
 
-    expired_ids = []
-    for queue, minutes in ((reserved_queue, RESERVATION_MINUTES), (paying_queue, PAYMENT_MINUTES)):
-        deadline = now - timedelta(minutes=minutes)
-        while not queue.is_empty() and queue.peek()[2] < deadline:
-            ticket_id, status, _ = queue.dequeue()
-            purchase_state_machine(status).trigger(EXPIRE)
-            expired_ids.append(ticket_id)
-    return expired_ids
+    expired = []
+    while not queue.is_empty() and queue.peek()[2] < now:
+        ticket = queue.dequeue()
+        expired.append(ticket)
+    return expired
 
 
 def purchase_history(purchases, order=NEWEST_FIRST):
@@ -130,12 +154,16 @@ def next_status(current_status, event):
         raise PurchaseError(str(error), 409)
 
 
-def expiration_time(status, created_at):
-    """Colombian time until which an unpaid reservation is held (None if not applicable)."""
-    minutes = {RESERVED: RESERVATION_MINUTES, PAYING: PAYMENT_MINUTES}.get(status)
-    if minutes is None:
+def expiration_time(status, created_at, payment_expires_at=None):
+    """Colombian time until which an unpaid purchase is held (None if not applicable).
+    A reservation lasts RESERVATION_MINUTES; an open payment lasts as long as its Stripe session."""
+    if status == RESERVED:
+        deadline = created_at + timedelta(minutes=RESERVATION_MINUTES)
+    elif status == PAYING:
+        deadline = payment_expires_at or created_at + timedelta(minutes=RESERVATION_MINUTES + PAYMENT_WINDOW_MINUTES)
+    else:
         return None
-    return (created_at + timedelta(minutes=minutes)).astimezone(COLOMBIA_TIMEZONE)
+    return deadline.astimezone(COLOMBIA_TIMEZONE)
 
 
 def clean_passengers(passengers):
@@ -187,18 +215,40 @@ TAKEN_SEATS_QUERY = """
 """
 
 
+PENDING_DEADLINES_QUERY = f"""
+    SELECT t.payment_id, t.status, deadline, pm.stripe_session_id
+    FROM (
+        SELECT t.payment_id, t.status,
+               CASE WHEN t.status = 'RESERVED' THEN MIN(t.created_at) + INTERVAL '{RESERVATION_MINUTES} minutes'
+                    ELSE COALESCE(pm.expires_at,
+                                  MIN(t.created_at) + INTERVAL '{RESERVATION_MINUTES + PAYMENT_WINDOW_MINUTES} minutes')
+               END AS deadline
+        FROM tickets t JOIN payments pm ON pm.id = t.payment_id
+        WHERE t.status IN ('RESERVED', 'PAYING')
+        GROUP BY t.payment_id, t.status, pm.expires_at
+    ) t
+    JOIN payments pm ON pm.id = t.payment_id
+    ORDER BY deadline;
+"""
+
+
 def _expire_old_reservations(cursor):
-    cursor.execute(
-        "SELECT id, status, created_at FROM tickets WHERE status IN ('RESERVED', 'PAYING') ORDER BY created_at;"
-    )
-    expired_ids = find_expired(cursor.fetchall(), datetime.now(timezone.utc))
-    if expired_ids:
-        cursor.execute("UPDATE tickets SET status = 'EXPIRED' WHERE id = ANY(%s);", (expired_ids,))
-        cursor.execute(
-            """UPDATE payments SET status = 'EXPIRED'
-               WHERE status = 'PENDING' AND id IN (SELECT payment_id FROM tickets WHERE id = ANY(%s));""",
-            (expired_ids,),
-        )
+    """Expires the purchases whose time ran out. Before expiring an open payment it closes
+    the Stripe session and asks whether it was paid, so nobody is charged without a ticket."""
+    cursor.execute(PENDING_DEADLINES_QUERY)
+    for payment_id, status, _, stripe_session_id in find_expired(cursor.fetchall(), datetime.now(timezone.utc)):
+        if status == PAYING and stripe_session_id:
+            answer = stripe_session_checker(stripe_session_id)
+            if answer == SESSION_PAID:
+                new_status = next_status(status, CONFIRM_PAYMENT)
+                cursor.execute("UPDATE tickets SET status = %s WHERE payment_id = %s;", (new_status, payment_id))
+                cursor.execute("UPDATE payments SET status = 'PAID' WHERE id = %s;", (payment_id,))
+                continue
+            if answer == SESSION_UNKNOWN:
+                continue  # Stripe did not answer: keep the seats and check again on the next request
+        new_status = next_status(status, EXPIRE)
+        cursor.execute("UPDATE tickets SET status = %s WHERE payment_id = %s;", (new_status, payment_id))
+        cursor.execute("UPDATE payments SET status = 'EXPIRED' WHERE id = %s AND status = 'PENDING';", (payment_id,))
 
 
 def _get_departure(cursor, schedule_id, lock=False):
@@ -284,6 +334,19 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
 
         replaced_sessions = _cancel_pending_purchases_for_trip(cursor, user_id, schedule_id, travel_date)
 
+        cursor.execute(
+            """SELECT COUNT(DISTINCT t.payment_id)
+               FROM tickets t JOIN passengers p ON p.id = t.passenger_id
+               WHERE p.user_id = %s AND t.status IN ('RESERVED', 'PAYING');""",
+            (user_id,),
+        )
+        if cursor.fetchone()[0] >= MAX_PENDING_PURCHASES:
+            raise PurchaseError(
+                f"Ya tienes {MAX_PENDING_PURCHASES} compras sin pagar. Págalas o cancélalas en Mis viajes "
+                "antes de apartar más asientos.",
+                409,
+            )
+
         cursor.execute(TAKEN_SEATS_QUERY, (schedule_id, travel_date))
         seat_map = build_seat_map(departure["capacity"], (row[0] for row in cursor))
         taken_number = hold_seats(seat_map, numbers)
@@ -365,7 +428,8 @@ def get_payment_details(user_id, payment_id):
         if not purchase_state_machine(status).can(START_PAYMENT):
             raise PurchaseError(f"Esta compra no se puede pagar porque está {status}", 409)
         cursor.execute(
-            """SELECT s.price, o.name, d.name, s.departure_time, MIN(t.travel_date), pm.stripe_session_id
+            """SELECT s.price, o.name, d.name, s.departure_time, MIN(t.travel_date), pm.stripe_session_id,
+                      pm.expires_at
                FROM tickets t
                JOIN payments pm ON pm.id = t.payment_id
                JOIN schedules s ON s.id = t.schedule_id
@@ -373,34 +437,66 @@ def get_payment_details(user_id, payment_id):
                JOIN destinations o ON o.id = r.origin_id
                JOIN destinations d ON d.id = r.destination_id
                WHERE t.payment_id = %s
-               GROUP BY s.price, o.name, d.name, s.departure_time, pm.stripe_session_id;""",
+               GROUP BY s.price, o.name, d.name, s.departure_time, pm.stripe_session_id, pm.expires_at;""",
             (payment_id,),
         )
-        price, origin, destination, departure_time, travel_date, stripe_session_id = cursor.fetchone()
+        price, origin, destination, departure_time, travel_date, stripe_session_id, expires_at = cursor.fetchone()
     return {
         "status": status,
         "unit_price": price,
         "quantity": len(rows),
         "description": f"Pasaje {origin} - {destination}, {travel_date.isoformat()} {departure_time.strftime('%H:%M')}",
         "stripe_session_id": stripe_session_id,
+        "expires_at": expires_at.astimezone(COLOMBIA_TIMEZONE).isoformat() if expires_at else None,
     }
 
 
-def mark_as_paying(user_id, payment_id, stripe_session_id):
+def mark_as_paying(user_id, payment_id, stripe_session_id, expires_at):
+    """Saves the open Stripe session. The purchase is held exactly as long as that session lives."""
     with connect() as connection, connection.cursor() as cursor:
         status = _apply_event_to_payment(cursor, user_id, payment_id, START_PAYMENT)
-        cursor.execute("UPDATE payments SET stripe_session_id = %s WHERE id = %s;", (stripe_session_id, payment_id))
+        cursor.execute(
+            "UPDATE payments SET stripe_session_id = %s, expires_at = %s WHERE id = %s;",
+            (stripe_session_id, expires_at, payment_id),
+        )
     return status
+
+
+def confirm_payment(payment_id, user_id=None):
+    """Marks a purchase as paid after Stripe confirmed the charge. user_id is None when the
+    confirmation comes from the Stripe webhook. If the purchase had already expired, it tries
+    to take the seats back; if someone else bought them, it raises SeatsLostError (refund)."""
+    with connect() as connection, connection.cursor() as cursor:
+        if user_id is None:
+            cursor.execute("SELECT id, status FROM tickets WHERE payment_id = %s;", (payment_id,))
+            rows = cursor.fetchall()
+            if not rows:
+                raise PurchaseError("No encontramos esa compra", 404)
+        else:
+            rows = _tickets_of_payment(cursor, user_id, payment_id)
+        if all(status == PAID for _, status in rows):
+            return PAID  # it was already confirmed (for example, the user reloaded the page)
+
+        status = rows[0][1]
+        event = CONFIRM_PAYMENT if status == PAYING else RECOVER_PAYMENT
+        new_status = next_status(status, event)
+        cursor.execute("SELECT stripe_session_id FROM payments WHERE id = %s;", (payment_id,))
+        stripe_session_id = cursor.fetchone()[0]
+        try:
+            cursor.execute("UPDATE tickets SET status = %s WHERE payment_id = %s;", (new_status, payment_id))
+        except psycopg.errors.UniqueViolation:
+            raise SeatsLostError(payment_id, stripe_session_id)
+        cursor.execute("UPDATE payments SET status = 'PAID' WHERE id = %s;", (payment_id,))
+    return new_status
 
 
 def mark_as_paid(user_id, payment_id):
+    return confirm_payment(payment_id, user_id)
+
+
+def mark_as_refunded(payment_id):
     with connect() as connection, connection.cursor() as cursor:
-        rows = _tickets_of_payment(cursor, user_id, payment_id)
-        if all(status == PAID for _, status in rows):
-            return PAID  # it was already confirmed (for example, the user reloaded the page)
-        status = _apply_event_to_payment(cursor, user_id, payment_id, CONFIRM_PAYMENT)
-        cursor.execute("UPDATE payments SET status = 'PAID' WHERE id = %s;", (payment_id,))
-    return status
+        cursor.execute("UPDATE payments SET status = 'REFUNDED' WHERE id = %s;", (payment_id,))
 
 
 def cancel_purchase(user_id, payment_id):
@@ -417,7 +513,7 @@ def cancel_purchase(user_id, payment_id):
 MY_TICKETS_QUERY = """
     SELECT t.id, t.payment_id, t.status, t.travel_date, s.departure_time, c.name,
            o.name, d.name, st.number, p.name, p.document, s.price, pm.amount,
-           pm.created_at, r.duration_min
+           pm.created_at, r.duration_min, pm.expires_at
     FROM tickets t
     JOIN passengers p ON p.id = t.passenger_id
     JOIN seats st ON st.id = t.seat_id
@@ -443,10 +539,10 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
     purchases_in_order = []
     for row in rows:
         (ticket_id, payment_id, status, travel_date, departure_time, company, origin, destination,
-         seat, passenger, document, price, amount, purchased_at, duration_min) = row
+         seat, passenger, document, price, amount, purchased_at, duration_min, payment_expires_at) = row
         purchase = purchases_by_payment.get(payment_id)
         if purchase is None:
-            expires_at = expiration_time(status, purchased_at)
+            expires_at = expiration_time(status, purchased_at, payment_expires_at)
             purchase = {
                 "payment_id": payment_id,
                 "status": status,
