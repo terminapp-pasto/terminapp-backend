@@ -17,7 +17,7 @@ NUMBER = "number"
 # key -> (default, kind, label for the panel, minimum, maximum). For texts, min/max are lengths.
 SETTINGS = {
     "home_title": ("¿A dónde viajas hoy", TEXT, "Título de la portada", 3, 60),
-    "home_highlight": ("desde Pasto", TEXT, "Parte resaltada del título", 0, 40),
+    "home_highlight": ("desde Pasto?", TEXT, "Parte resaltada del título (en morado)", 0, 40),
     "home_subtitle": (
         "Escríbelo como se lo dirías a una persona. La IA busca las salidas y tú eliges el asiento.",
         LONG_TEXT, "Texto bajo el título", 0, 200,
