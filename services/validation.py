@@ -27,13 +27,27 @@ NAME_PATTERN = re.compile(
 DOCUMENT_PATTERN = re.compile(rf"^\d{{{DOCUMENT_MIN_LENGTH},{DOCUMENT_MAX_LENGTH}}}$")
 
 # Colombian identity documents accepted for bus travel: code -> (name, pattern, rule).
-# A passport may have letters; the other documents are digits only.
+# A passport may have letters; the other documents are digits only. These are the
+# defaults: the real list lives in the document_types table and the admin can change it.
 DEFAULT_DOCUMENT_TYPE = "CC"
+DOCUMENT_TYPE_CODE_PATTERN = re.compile(r"^[A-Z]{2}$")
+
+
+def build_document_type(name, min_length, max_length, allows_letters):
+    """(name, pattern, rule) of a document type, built from its lengths (never from a
+    regular expression typed by someone, so a bad pattern can never slow the server)."""
+    characters = "[A-Z0-9]" if allows_letters else r"\d"
+    pattern = re.compile(rf"^{characters}{{{min_length},{max_length}}}$")
+    what = "letras y números" if allows_letters else "solo números"
+    size = f"{min_length}" if min_length == max_length else f"de {min_length} a {max_length}"
+    return name, pattern, f"{name}: {what}, {size} caracteres"
+
+
 DOCUMENT_TYPES = {
-    "CC": ("Cédula de ciudadanía", re.compile(r"^\d{5,10}$"), "La cédula tiene solo números, de 5 a 10 dígitos"),
-    "TI": ("Tarjeta de identidad", re.compile(r"^\d{10,11}$"), "La tarjeta de identidad tiene 10 u 11 dígitos"),
-    "CE": ("Cédula de extranjería", re.compile(r"^\d{5,12}$"), "La cédula de extranjería tiene de 5 a 12 dígitos"),
-    "PA": ("Pasaporte", re.compile(r"^[A-Z0-9]{5,12}$"), "El pasaporte tiene letras y números, de 5 a 12 caracteres"),
+    "CC": build_document_type("Cédula de ciudadanía", 5, 10, False),
+    "TI": build_document_type("Tarjeta de identidad", 10, 11, False),
+    "CE": build_document_type("Cédula de extranjería", 5, 12, False),
+    "PA": build_document_type("Pasaporte", 5, 12, True),
 }
 DOCUMENT_TYPE_RULE = "El tipo de documento debe ser CC, TI, CE o PA"
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -57,8 +71,8 @@ def is_valid_document(document):
     return bool(DOCUMENT_PATTERN.match(document))
 
 
-def is_valid_document_type(document_type):
-    return document_type in DOCUMENT_TYPES
+def is_valid_document_type(document_type, document_types=None):
+    return document_type in (document_types or DOCUMENT_TYPES)
 
 
 def normalize_document(document):
@@ -66,13 +80,38 @@ def normalize_document(document):
     return re.sub(r"[\s.-]", "", str(document)).upper()
 
 
-def document_rule(document_type):
+def document_rule(document_type, document_types=None):
     """The message shown when a document does not match its type."""
-    return DOCUMENT_TYPES[document_type][2]
+    return (document_types or DOCUMENT_TYPES)[document_type][2]
 
 
-def is_valid_document_of_type(document, document_type):
-    return is_valid_document_type(document_type) and bool(DOCUMENT_TYPES[document_type][1].match(document))
+def is_valid_document_of_type(document, document_type, document_types=None):
+    document_types = document_types or DOCUMENT_TYPES
+    return is_valid_document_type(document_type, document_types) and bool(
+        document_types[document_type][1].match(document)
+    )
+
+
+def document_type_rule(document_types=None):
+    codes = list(document_types or DOCUMENT_TYPES)
+    listed = ", ".join(codes[:-1]) + f" o {codes[-1]}" if len(codes) > 1 else codes[0]
+    return f"El tipo de documento debe ser {listed}"
+
+
+# Colombian mobile: 10 digits starting with 3 ("+57" and spaces are removed first)
+PHONE_PATTERN = re.compile(r"^3\d{9}$")
+PHONE_RULE = "El celular debe tener 10 dígitos y empezar por 3, por ejemplo 3001234567"
+
+
+def normalize_phone(phone):
+    digits = re.sub(r"\D", "", str(phone))
+    if len(digits) == 12 and digits.startswith("57"):
+        digits = digits[2:]
+    return digits
+
+
+def is_valid_phone(phone):
+    return bool(PHONE_PATTERN.match(phone))
 
 
 def is_valid_email(email):
