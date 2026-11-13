@@ -13,7 +13,7 @@ from services.database import connect
 SCRIPTS_FOLDER = Path(__file__).resolve().parent.parent / "db"
 AUTOMATIC_SCRIPTS = (
     "06_payment_expiration.sql", "07_booking_codes.sql", "08_document_types.sql",
-    "09_roles_and_settings.sql", "10_colombia_routes.sql",
+    "09_roles_and_settings.sql", "10_colombia_routes.sql", "11_app_settings.sql",
 )
 
 

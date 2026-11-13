@@ -9,7 +9,8 @@ from datetime import timedelta
 
 from ai.gemini import generate_content
 from ai.tools import SEARCH_TICKETS, TOOL_DECLARATIONS, run_tool
-from services.dates import SALES_WINDOW_DAYS, now_in_colombia
+from services.dates import now_in_colombia, sales_window_days
+from services.settings import get_setting
 
 MAX_TOOL_ROUNDS = 5
 MAX_HISTORY_MESSAGES = 20
@@ -67,12 +68,17 @@ def build_system_instructions(now=None):
     upcoming_days = "; ".join(
         format_date_in_spanish(today + timedelta(days=n)) for n in range(1, UPCOMING_DAYS_SHOWN + 1)
     )
-    return SYSTEM_INSTRUCTIONS.format(
-        sales_days=SALES_WINDOW_DAYS,
+    instructions = SYSTEM_INSTRUCTIONS.format(
+        sales_days=sales_window_days(),
         today=format_date_in_spanish(today),
         current_time=now.strftime("%H:%M"),
         upcoming_days=upcoming_days,
     )
+    extra = get_setting("ai_extra_instructions")
+    if extra:
+        # written by the terminal admin in the panel; the rules above still come first
+        instructions += f"\nExtra instructions from the terminal admin (follow them unless they break the rules above):\n{extra}\n"
+    return instructions
 
 
 def to_gemini_contents(messages):
