@@ -6,6 +6,7 @@ test_purchases_database.py: they only run with TEST_DATABASE_URL and wipe that d
 
 import os
 import unittest
+from unittest import mock
 from datetime import timedelta
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from fastapi import HTTPException
 
 import config
 from routes.dependencies import company_scope, require_admin, require_staff
+
+READ_REQUEST = mock.Mock(method="GET")  # the panel only limits changes (POST)
 from services import admin, purchases
 from services.database import connect
 from services.dates import today_in_colombia
@@ -60,13 +63,13 @@ class AdminDatabaseTest(unittest.TestCase):
     # ---------------- Roles ----------------
 
     def test_roles_protect_the_panel(self):
-        self.assertIsNone(company_scope(require_staff(self.admin)))
-        self.assertEqual(company_scope(require_staff(self.company)), BOLIVARIANO)
+        self.assertIsNone(company_scope(require_staff(READ_REQUEST, self.admin)))
+        self.assertEqual(company_scope(require_staff(READ_REQUEST, self.company)), BOLIVARIANO)
         with self.assertRaises(HTTPException) as context:
-            require_staff(self.traveller)
+            require_staff(READ_REQUEST, self.traveller)
         self.assertEqual(context.exception.status_code, 403)
         with self.assertRaises(HTTPException):
-            require_admin(self.company)
+            require_admin(READ_REQUEST, self.company)
 
     def test_login_lookup_brings_the_role(self):
         user = find_user_by_email("bol@prueba.co")

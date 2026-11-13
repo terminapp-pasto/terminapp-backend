@@ -81,6 +81,28 @@ app.add_middleware(
 )
 
 
+# Sent with every answer. The API only returns JSON, so the browser must not guess another
+# type, show it inside a frame, or keep answers with personal data in its cache.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+PRIVATE_PATH_PREFIXES = ("/admin", "/me", "/my-tickets", "/purchases", "/login", "/register")
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    if request.url.path.startswith(PRIVATE_PATH_PREFIXES):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.exception_handler(RequestValidationError)
 async def handle_invalid_request(_request: Request, error: RequestValidationError):
     """Malformed or too long data: a clear message instead of a technical error."""

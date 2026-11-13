@@ -47,3 +47,4 @@ REGISTER_LIMITER = RateLimiter(max_requests=3, window_seconds=600)
 CHAT_LIMITER = RateLimiter(max_requests=10, window_seconds=60)
 PURCHASE_LIMITER = RateLimiter(max_requests=10, window_seconds=600)
 PAYMENT_LIMITER = RateLimiter(max_requests=20, window_seconds=600)
+ADMIN_WRITE_LIMITER = RateLimiter(max_requests=60, window_seconds=60)  # panel changes, per client
