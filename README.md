@@ -89,8 +89,10 @@ because TerminAPP is used by travellers in Colombia.
 calls a `propose_` tool; the backend checks the price and the permissions and returns the change as an action with a
 summary. Only the panel's **Confirmar** button calls the real route.
 
-**Admin account:** set `ADMIN_ACCOUNT_EMAIL` and `ADMIN_ACCOUNT_PASSWORD` on Render and the backend creates it (or
-gives it the admin role) when it starts. From the panel the admin turns other users into company employees.
+**Admin account:** the professor's test account (`TEST_ACCOUNT_EMAIL` / `TEST_ACCOUNT_PASSWORD`, shown on the login
+page) is created as an admin when the backend starts, so one login opens the whole app, panel included.
+`ADMIN_ACCOUNT_EMAIL` and `ADMIN_ACCOUNT_PASSWORD` optionally add another admin. From the panel the admin turns
+other users into company employees.
 
 ## Purchase rules
 - **One passenger per seat.** Buying 3 seats asks for 3 names and 3 documents, and the same document cannot appear

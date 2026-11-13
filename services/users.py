@@ -58,6 +58,7 @@ def upsert_user(name, email, password_hash, role=None):
         cursor.execute(
             "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s) "
             "ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, "
-            "role = COALESCE(%s, users.role);",
-            (name, email, password_hash, role or ROLE_USER, role),
+            "role = COALESCE(%s, users.role), "
+            "company_id = CASE WHEN %s::text IS NULL THEN users.company_id ELSE NULL END;",
+            (name, email, password_hash, role or ROLE_USER, role, role),
         )

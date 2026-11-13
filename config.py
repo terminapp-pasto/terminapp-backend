@@ -37,13 +37,13 @@ ALLOWED_ORIGINS_PATTERN = os.getenv(
     "ALLOWED_ORIGINS_PATTERN", r"https://terminapp-frontend\.vercel\.app|http://localhost:5173"
 )
 
-# Test account for the professor (only created when both variables are set)
+# Test account for the professor (only created when both variables are set). It is an admin,
+# so with this one login the professor can try the whole app, including the admin panel.
 TEST_ACCOUNT_NAME = os.getenv("TEST_ACCOUNT_NAME", "Profesor")
 TEST_ACCOUNT_EMAIL = os.getenv("TEST_ACCOUNT_EMAIL")
 TEST_ACCOUNT_PASSWORD = os.getenv("TEST_ACCOUNT_PASSWORD")
 
-# Terminal admin account (only created when both variables are set). Keep this
-# password secret: unlike the test account, it can change prices and settings.
+# Optional extra admin account (only created when both variables are set).
 ADMIN_ACCOUNT_NAME = os.getenv("ADMIN_ACCOUNT_NAME", "Administrador")
 ADMIN_ACCOUNT_EMAIL = os.getenv("ADMIN_ACCOUNT_EMAIL")
 ADMIN_ACCOUNT_PASSWORD = os.getenv("ADMIN_ACCOUNT_PASSWORD")
