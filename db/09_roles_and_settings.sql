@@ -28,6 +28,9 @@ SET bus_id = (
 )
 WHERE s.bus_id IS NULL;
 
+-- A departure can be taken off sale without deleting it (its tickets stay in the history).
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
 -- 4. Contact phone of the purchase and checked bags of each passenger.
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(10);
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS checked_bags SMALLINT NOT NULL DEFAULT 0;

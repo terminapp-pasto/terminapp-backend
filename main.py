@@ -14,27 +14,33 @@ from fastapi.responses import JSONResponse
 
 import config
 from authentication.utilities import encrypt_password
-from routes import auth, chat, purchases, search, system
+from routes import admin, auth, chat, purchases, search, system
 from services.migrations import apply_pending_migrations
-from services.users import upsert_user
+from services.users import ROLE_ADMIN, upsert_user
 
 API_VERSION = "2.0.0"
 INVALID_DATA_MESSAGE = "Algunos datos no son válidos o son demasiado largos. Revísalos e intenta de nuevo."
 
 
-def create_test_account():
-    """Creates the professor's test account, only if its data is in the environment."""
-    if not (config.TEST_ACCOUNT_EMAIL and config.TEST_ACCOUNT_PASSWORD):
+def create_account(name, email, password, role=None):
+    """Creates an account from the environment, only if its email and password are set."""
+    if not (email and password):
         return
     try:
-        upsert_user(
-            config.TEST_ACCOUNT_NAME,
-            config.TEST_ACCOUNT_EMAIL.strip().lower(),
-            encrypt_password(config.TEST_ACCOUNT_PASSWORD),
-        )
+        upsert_user(name, email.strip().lower(), encrypt_password(password), role)
     except psycopg.Error as error:
         # If the database does not answer, the API starts anyway
-        print(f"Could not create the test account: {error}")
+        print(f"Could not create the account {email}: {error}")
+
+
+def create_test_account():
+    """The professor's test account (a normal traveller)."""
+    create_account(config.TEST_ACCOUNT_NAME, config.TEST_ACCOUNT_EMAIL, config.TEST_ACCOUNT_PASSWORD)
+
+
+def create_admin_account():
+    """The terminal admin account."""
+    create_account(config.ADMIN_ACCOUNT_NAME, config.ADMIN_ACCOUNT_EMAIL, config.ADMIN_ACCOUNT_PASSWORD, ROLE_ADMIN)
 
 
 def update_database():
@@ -52,6 +58,7 @@ def update_database():
 async def on_startup(_app):
     update_database()
     create_test_account()
+    create_admin_account()
     yield
 
 
@@ -68,7 +75,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=config.ALLOWED_ORIGINS_PATTERN,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST"],  # changes use POST too, so no other method is needed
     allow_headers=["*"],
 )
 
@@ -84,3 +91,4 @@ app.include_router(search.router)
 app.include_router(chat.router)
 app.include_router(auth.router)
 app.include_router(purchases.router)
+app.include_router(admin.router)

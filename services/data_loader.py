@@ -13,6 +13,7 @@ ROUTES_QUERY = """
     JOIN destinations o ON o.id = r.origin_id
     JOIN destinations d ON d.id = r.destination_id
     JOIN companies c ON c.id = r.company_id
+    WHERE EXISTS (SELECT 1 FROM schedules s WHERE s.route_id = r.id AND s.active)
     ORDER BY r.id;
 """
 
@@ -21,7 +22,7 @@ SCHEDULES_QUERY = """
     FROM schedules s
     JOIN routes r ON r.id = s.route_id
     JOIN destinations d ON d.id = r.destination_id
-    WHERE d.name = %s
+    WHERE d.name = %s AND s.active
     ORDER BY s.departure_time;
 """
 
@@ -32,6 +33,7 @@ HIERARCHY_QUERY = """
     JOIN companies c ON c.id = r.company_id
     JOIN destinations o ON o.id = r.origin_id
     JOIN destinations d ON d.id = r.destination_id
+    WHERE s.active
     ORDER BY c.name, d.name, s.departure_time;
 """
 

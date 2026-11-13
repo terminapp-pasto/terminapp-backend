@@ -28,7 +28,7 @@ class LoginRequest(BaseModel):
 
 
 def build_session_response(user):
-    public_user = {"id": user["id"], "name": user["name"], "email": user["email"]}
+    public_user = {key: user[key] for key in ("id", "name", "email", "role", "company_id", "company")}
     return {"token": create_token(user["id"], user["name"]), "user": public_user}
 
 
