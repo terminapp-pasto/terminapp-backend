@@ -54,15 +54,18 @@ def decode_token(token):
     """Returns the token claims if it is valid; otherwise raises TokenError."""
     try:
         header, payload, signature = token.split(".")
-    except ValueError:
+        expected = _sign(f"{header}.{payload}")
+    except (ValueError, UnicodeError):
+        # wrong number of parts, or characters that a real token never has
         raise TokenError("Token mal formado")
 
-    if not hmac.compare_digest(signature, _sign(f"{header}.{payload}")):
+    if not hmac.compare_digest(signature.encode("utf-8"), expected.encode("ascii")):
         raise TokenError("La firma del token no es válida")
 
     try:
         claims = json.loads(_decode_base64url(payload))
-    except ValueError:
+        int(claims["sub"])
+    except (ValueError, TypeError, KeyError):
         raise TokenError("Token mal formado")
 
     if claims.get("exp", 0) < time.time():
