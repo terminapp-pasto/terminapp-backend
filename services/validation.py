@@ -40,7 +40,8 @@ def build_document_type(name, min_length, max_length, allows_letters):
     pattern = re.compile(rf"^{characters}{{{min_length},{max_length}}}$")
     what = "letras y números" if allows_letters else "solo números"
     size = f"{min_length}" if min_length == max_length else f"de {min_length} a {max_length}"
-    return name, pattern, f"{name}: {what}, {size} caracteres"
+    unit = "caracteres" if allows_letters else "dígitos"
+    return name, pattern, f"{name}: {what}, {size} {unit}"
 
 
 DOCUMENT_TYPES = {

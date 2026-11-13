@@ -10,8 +10,8 @@ ROLE_COMPANY = "company"
 ROLE_ADMIN = "admin"
 ROLES = (ROLE_USER, ROLE_COMPANY, ROLE_ADMIN)
 
-USER_COLUMNS = """u.id, u.name, u.email, u.role, u.company_id, c.name
-    FROM users u LEFT JOIN companies c ON c.id = u.company_id"""
+USER_COLUMNS = "u.id, u.name, u.email, u.role, u.company_id, c.name"
+USER_TABLES = "users u LEFT JOIN companies c ON c.id = u.company_id"
 
 
 def _user_from_row(row):
@@ -35,7 +35,7 @@ def create_user(name, email, password_hash):
 def find_user_by_email(email):
     """Returns the user with its password_hash, or None if it does not exist."""
     with connect() as connection, connection.cursor() as cursor:
-        cursor.execute(f"SELECT {USER_COLUMNS}, u.password_hash WHERE u.email = %s;", (email,))
+        cursor.execute(f"SELECT {USER_COLUMNS}, u.password_hash FROM {USER_TABLES} WHERE u.email = %s;", (email,))
         row = cursor.fetchone()
     if row is None:
         return None
@@ -46,7 +46,7 @@ def find_user_by_email(email):
 
 def find_user_by_id(user_id):
     with connect() as connection, connection.cursor() as cursor:
-        cursor.execute(f"SELECT {USER_COLUMNS} WHERE u.id = %s;", (user_id,))
+        cursor.execute(f"SELECT {USER_COLUMNS} FROM {USER_TABLES} WHERE u.id = %s;", (user_id,))
         row = cursor.fetchone()
     return None if row is None else _user_from_row(row)
 

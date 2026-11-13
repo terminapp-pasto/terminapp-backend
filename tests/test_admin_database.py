@@ -16,7 +16,7 @@ from routes.dependencies import company_scope, require_admin, require_staff
 from services import admin, purchases
 from services.database import connect
 from services.dates import today_in_colombia
-from services.users import find_user_by_id
+from services.users import find_user_by_email, find_user_by_id, upsert_user
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
@@ -67,6 +67,13 @@ class AdminDatabaseTest(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 403)
         with self.assertRaises(HTTPException):
             require_admin(self.company)
+
+    def test_login_lookup_brings_the_role(self):
+        user = find_user_by_email("bol@prueba.co")
+        self.assertEqual((user["role"], user["company"], user["password_hash"]), ("company", "EXPRESO BOLIVARIANO", "x"))
+        upsert_user("Jefe", "jefe@prueba.co", "y", "admin")
+        upsert_user("Jefe", "jefe@prueba.co", "z")            # the test account keeps its role
+        self.assertEqual(find_user_by_email("jefe@prueba.co")["role"], "admin")
 
     def test_admin_gives_and_takes_roles(self):
         changed = admin.set_user_role(1, 3, "company", CONTINENTAL)
