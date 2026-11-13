@@ -8,7 +8,7 @@ from services.dates import InvalidDateError, parse_date, parse_travel_date
 from services.rate_limit import (
     CHAT_LIMITER, LOGIN_LIMITER, PAYMENT_LIMITER, PURCHASE_LIMITER, REGISTER_LIMITER, RateLimiter,
 )
-from services.users import find_user_by_id
+from services.users import ROLE_ADMIN, ROLE_COMPANY, find_user_by_id
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -74,3 +74,24 @@ limit_register = build_rate_limit(REGISTER_LIMITER)
 limit_chat = build_rate_limit(CHAT_LIMITER)
 limit_purchases = build_rate_limit(PURCHASE_LIMITER)
 limit_payments = build_rate_limit(PAYMENT_LIMITER)
+
+
+def require_staff(user: dict = Depends(get_current_user)):
+    """Protects the admin panel: the terminal admin or a bus company employee."""
+    if user["role"] == ROLE_ADMIN:
+        return user
+    if user["role"] == ROLE_COMPANY and user["company_id"] is not None:
+        return user
+    raise HTTPException(status_code=403, detail="Esta sección es solo para el administrador y las empresas")
+
+
+def require_admin(user: dict = Depends(get_current_user)):
+    """Only the terminal admin."""
+    if user["role"] != ROLE_ADMIN:
+        raise HTTPException(status_code=403, detail="Solo el administrador de la terminal puede hacer esto")
+    return user
+
+
+def company_scope(user):
+    """None for the admin (sees every company); the company id for a company employee."""
+    return None if user["role"] == ROLE_ADMIN else user["company_id"]

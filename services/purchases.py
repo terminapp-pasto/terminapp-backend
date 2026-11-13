@@ -256,7 +256,7 @@ def clean_contact_phone(phone):
 DEPARTURE_QUERY = """
     SELECT s.id, s.departure_time, s.price, c.name, o.name, d.name,
            r.duration_min, b.id, b.capacity, b.plate,
-           c.id, c.max_seats_per_purchase, c.reservation_minutes
+           c.id, c.max_seats_per_purchase, c.reservation_minutes, s.active
     FROM schedules s
     JOIN routes r ON r.id = s.route_id
     JOIN companies c ON c.id = r.company_id
@@ -317,6 +317,8 @@ def _get_departure(cursor, schedule_id, lock=False):
     row = cursor.fetchone()
     if row is None:
         raise PurchaseError("Esa salida no existe", 404)
+    if lock and not row[13]:
+        raise PurchaseError("Esa salida ya no está a la venta", 404)
     if lock:
         # Queues the other reservations for this departure until this one finishes
         cursor.execute("SELECT id FROM schedules WHERE id = %s FOR UPDATE;", (schedule_id,))
@@ -506,7 +508,7 @@ def get_payment_details(user_id, payment_id):
         if not purchase_state_machine(status).can(START_PAYMENT):
             raise PurchaseError(f"Esta compra no se puede pagar porque está {status}", 409)
         cursor.execute(
-            """SELECT s.price, o.name, d.name, s.departure_time, MIN(t.travel_date), pm.stripe_session_id,
+            """SELECT pm.amount, o.name, d.name, s.departure_time, MIN(t.travel_date), pm.stripe_session_id,
                       pm.expires_at
                FROM tickets t
                JOIN payments pm ON pm.id = t.payment_id
@@ -515,13 +517,14 @@ def get_payment_details(user_id, payment_id):
                JOIN destinations o ON o.id = r.origin_id
                JOIN destinations d ON d.id = r.destination_id
                WHERE t.payment_id = %s
-               GROUP BY s.price, o.name, d.name, s.departure_time, pm.stripe_session_id, pm.expires_at;""",
+               GROUP BY pm.amount, o.name, d.name, s.departure_time, pm.stripe_session_id, pm.expires_at;""",
             (payment_id,),
         )
-        price, origin, destination, departure_time, travel_date, stripe_session_id, expires_at = cursor.fetchone()
+        amount, origin, destination, departure_time, travel_date, stripe_session_id, expires_at = cursor.fetchone()
     return {
         "status": status,
-        "unit_price": price,
+        # the price saved when the seats were reserved, even if the company changed it later
+        "unit_price": amount // len(rows),
         "quantity": len(rows),
         "description": f"Pasaje {origin} - {destination}, {travel_date.isoformat()} {departure_time.strftime('%H:%M')}",
         "stripe_session_id": stripe_session_id,
@@ -647,6 +650,9 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
             {"ticket_id": ticket_id, "seat": seat, "passenger": passenger,
              "document_type": document_type, "document": document, "checked_bags": checked_bags}
         )
+    for purchase in purchases_in_order:
+        # the price paid, even if the company changed the departure's price later
+        purchase["unit_price"] = purchase["total"] // len(purchase["tickets"])
     return purchase_history(purchases_in_order, order)
 
 
