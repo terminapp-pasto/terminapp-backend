@@ -34,8 +34,9 @@ def create_account(name, email, password, role=None):
 
 
 def create_test_account():
-    """The professor's test account (a normal traveller)."""
-    create_account(config.TEST_ACCOUNT_NAME, config.TEST_ACCOUNT_EMAIL, config.TEST_ACCOUNT_PASSWORD)
+    """The professor's test account. It is an admin so the professor can try every part
+    of the app (traveller, panel and AI assistant) with one login."""
+    create_account(config.TEST_ACCOUNT_NAME, config.TEST_ACCOUNT_EMAIL, config.TEST_ACCOUNT_PASSWORD, ROLE_ADMIN)
 
 
 def create_admin_account():
