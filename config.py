@@ -43,6 +43,19 @@ TEST_ACCOUNT_NAME = os.getenv("TEST_ACCOUNT_NAME", "Profesor")
 TEST_ACCOUNT_EMAIL = os.getenv("TEST_ACCOUNT_EMAIL")
 TEST_ACCOUNT_PASSWORD = os.getenv("TEST_ACCOUNT_PASSWORD")
 
+
+def _test_email(prefix):
+    """"profe@terminapp.co" -> "empresa.profe@terminapp.co": the other test accounts reuse the
+    professor's email with a prefix, so no new variables are needed in Render or Vercel."""
+    return f"{prefix}.{TEST_ACCOUNT_EMAIL}" if TEST_ACCOUNT_EMAIL else None
+
+
+# The other two roles, with the same password as the professor's account. Their emails
+# can be changed with these variables; the company account manages TEST_COMPANY_NAME.
+TEST_COMPANY_ACCOUNT_EMAIL = os.getenv("TEST_COMPANY_ACCOUNT_EMAIL") or _test_email("empresa")
+TEST_COMPANY_NAME = os.getenv("TEST_COMPANY_NAME", "EXPRESO BOLIVARIANO")
+TEST_TRAVELER_ACCOUNT_EMAIL = os.getenv("TEST_TRAVELER_ACCOUNT_EMAIL") or _test_email("viajero")
+
 # Optional extra admin account (only created when both variables are set).
 ADMIN_ACCOUNT_NAME = os.getenv("ADMIN_ACCOUNT_NAME", "Administrador")
 ADMIN_ACCOUNT_EMAIL = os.getenv("ADMIN_ACCOUNT_EMAIL")
