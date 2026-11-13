@@ -22,7 +22,7 @@ TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
 SCRIPTS = (
     "01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql",
-    "09_roles_and_settings.sql", "10_colombia_routes.sql",
+    "09_roles_and_settings.sql", "10_colombia_routes.sql", "11_app_settings.sql",
 )
 BOLIVARIANO = 3
 CONTINENTAL = 4
@@ -240,6 +240,89 @@ class AdminDatabaseTest(unittest.TestCase):
         proposal = tools.run("propose_company_settings", {"company_id": CONTINENTAL, "reservation_minutes": 8})
         self.assertIn("8 minutos para pagar", proposal["proposal"])
         self.assertEqual(tools.actions[0]["body"], {"reservation_minutes": 8})
+
+
+    # ---------------- Editing everything ----------------
+
+    def reserve(self, schedule_id=CALI_SCHEDULE_ID, seat=1):
+        return purchases.reserve_seats(3, schedule_id, self.tomorrow,
+                                       [{"seat": seat, "name": "Ana Pérez", "document": "1085123456"}])
+
+    def test_texts_and_rules_change_from_the_panel(self):
+        from services import settings
+        settings.clear_cache()
+        self.assertEqual(settings.get_setting("max_pending_purchases"), 2)
+        settings.update_settings({"max_pending_purchases": 1, "home_title": "  Viaja con nosotros  "})
+        self.assertEqual(settings.public_settings()["home_title"], "Viaja con nosotros")
+        self.assertNotIn("ai_extra_instructions", settings.public_settings())
+        self.reserve()
+        with self.assertRaises(purchases.PurchaseError) as context:
+            self.reserve(20)
+        self.assertIn("1 compra sin pagar", context.exception.message)
+        for bad in ({"max_pending_purchases": 0}, {"home_title": ""}, {"nope": 1}, {"sales_window_days": "9"}):
+            with self.assertRaises(settings.SettingError):
+                settings.update_settings(bad)
+        settings.update_settings({"max_pending_purchases": 2})
+        settings.clear_cache()
+
+    def test_sales_window_follows_the_setting(self):
+        from services import settings
+        from services.dates import InvalidDateError, parse_travel_date
+        settings.update_settings({"sales_window_days": 3})
+        try:
+            with self.assertRaises(InvalidDateError):
+                parse_travel_date((today_in_colombia() + timedelta(days=4)).isoformat())
+            parse_travel_date((today_in_colombia() + timedelta(days=3)).isoformat())
+        finally:
+            settings.update_settings({"sales_window_days": 60})
+
+    def test_rename_company_destination_route_and_document(self):
+        admin.rename_company(BOLIVARIANO, "bolivariano express")
+        self.assertIn("BOLIVARIANO EXPRESS", [c["name"] for c in admin.list_companies()])
+        with self.assertRaises(admin.AdminError):
+            admin.rename_company(BOLIVARIANO, "TRANSIPIALES")
+        cali = next(d for d in admin.list_destinations() if d["name"] == "Cali")
+        admin.rename_destination(cali["id"], "Santiago de Cali")
+        self.assertTrue(any(r["destination"] == "Santiago de Cali" for r in admin.list_routes()))
+        admin.update_route(BOLIVARIANO, CALI_ROUTE, 600)
+        with self.assertRaises(admin.AdminError):
+            admin.update_route(CONTINENTAL, CALI_ROUTE, 600)
+        admin.update_document_type("PA", name="Pasaporte extranjero", max_length=9)
+        self.assertEqual(next(t for t in admin.list_document_types() if t["code"] == "PA")["max_length"], 9)
+
+    def test_bus_capacity_and_departure_time(self):
+        bus_id = admin.list_buses(BOLIVARIANO)[0]["id"]
+        admin.update_bus(BOLIVARIANO, bus_id, capacity=44)
+        self.assertEqual(len(purchases.get_seat_map(CALI_SCHEDULE_ID, self.tomorrow)["seats"]), 44)
+        self.reserve(seat=43)
+        with self.assertRaises(admin.AdminError):
+            admin.update_bus(None, bus_id, capacity=40)        # seat 43 is held
+        admin.update_bus(None, bus_id, plate="EXB-999", capacity=43)
+        with self.assertRaises(admin.AdminError):
+            admin.change_departure_time(None, CALI_SCHEDULE_ID, "19:00")   # it has a traveller
+        moved = admin.change_departure_time(BOLIVARIANO, 20, "6:05")
+        self.assertEqual(moved["departure_time"], "06:05")
+        with self.assertRaises(admin.AdminError):
+            admin.change_departure_time(BOLIVARIANO, 21, "06:05")         # same route, same hour
+
+    def test_staff_cancels_and_refunds_purchases(self):
+        pending = self.reserve(seat=5)
+        found = admin.find_purchases(BOLIVARIANO, pending["booking_code"])
+        self.assertEqual([p["payment_id"] for p in found], [pending["payment_id"]])
+        self.assertEqual(admin.find_purchases(CONTINENTAL, pending["booking_code"]), [])
+        admin.cancel_purchase_as_staff(BOLIVARIANO, pending["payment_id"])
+        self.assertEqual(admin.find_purchases(None, "1085123456")[0]["status"], "CANCELLED")
+
+        paid = self.reserve(seat=6)
+        purchases.mark_as_paying(3, paid["payment_id"], "cs_test_paid", paid["expires_at"])
+        purchases.confirm_payment(paid["payment_id"])
+        with self.assertRaises(admin.AdminError):
+            admin.cancel_purchase_as_staff(None, paid["payment_id"])      # paid: must be refunded
+        refunded = []
+        admin.refund_purchase_as_staff(None, paid["payment_id"], refunded.append)
+        self.assertEqual(refunded, ["cs_test_paid"])
+        self.assertEqual(purchases.confirm_payment(paid["payment_id"]), "CANCELLED")  # a repeated webhook
+        self.reserve(seat=6)                                                       # the seat is free again
 
 
 if __name__ == "__main__":

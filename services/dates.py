@@ -3,7 +3,13 @@
 from datetime import date, datetime, timedelta, timezone
 
 COLOMBIA_TIMEZONE = timezone(timedelta(hours=-5))  # Colombia has no daylight saving time
-SALES_WINDOW_DAYS = 60   # tickets are sold up to 60 days ahead
+SALES_WINDOW_DAYS = 60   # default; the admin changes it in the panel (setting sales_window_days)
+
+
+def sales_window_days():
+    """How many days ahead tickets are sold, as the admin set it."""
+    from services.settings import get_setting  # imported here: settings needs the database
+    return get_setting("sales_window_days")
 
 
 class InvalidDateError(Exception):
@@ -32,6 +38,7 @@ def parse_travel_date(text):
     travel_date = today if not text else parse_date(text)
     if travel_date < today:
         raise InvalidDateError("Esa fecha ya pasó. Elige hoy o un día futuro")
-    if travel_date > today + timedelta(days=SALES_WINDOW_DAYS):
-        raise InvalidDateError(f"Solo se venden pasajes hasta {SALES_WINDOW_DAYS} días adelante")
+    window = sales_window_days()
+    if travel_date > today + timedelta(days=window):
+        raise InvalidDateError(f"Solo se venden pasajes hasta {window} días adelante")
     return travel_date

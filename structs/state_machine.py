@@ -67,6 +67,7 @@ CONFIRM_PAYMENT = "confirm_payment"
 CANCEL = "cancel"
 EXPIRE = "expire"
 RECOVER_PAYMENT = "recover_payment"   # a late payment arrived and the seats were still free
+REFUND = "refund"                     # the terminal gave the money back: the ticket is no longer valid
 
 
 def purchase_state_machine(current_state=SELECTING):
@@ -82,4 +83,5 @@ def purchase_state_machine(current_state=SELECTING):
     machine.add_transition(PAYING, EXPIRE, EXPIRED)
     machine.add_transition(EXPIRED, RECOVER_PAYMENT, PAID)
     machine.add_transition(CANCELLED, RECOVER_PAYMENT, PAID)
+    machine.add_transition(PAID, REFUND, CANCELLED)
     return machine

@@ -22,7 +22,8 @@ import psycopg
 
 from services.catalog import document_type_rules
 from services.database import connect
-from services.dates import COLOMBIA_TIMEZONE, SALES_WINDOW_DAYS, now_in_colombia
+from services.dates import COLOMBIA_TIMEZONE, now_in_colombia, sales_window_days
+from services.settings import get_setting
 from services.validation import (
     DEFAULT_DOCUMENT_TYPE, NAME_RULE, PHONE_RULE, document_rule, document_type_rule, is_valid_document_of_type,
     is_valid_document_type, is_valid_name, is_valid_phone, normalize_document, normalize_phone, normalize_spaces,
@@ -46,7 +47,7 @@ MAX_CHECKED_BAGS = 2
 # Purchases made before the deadline was stored (payments.expires_at) used these times
 RESERVATION_MINUTES = 15
 PAYMENT_WINDOW_MINUTES = 31
-MAX_PENDING_PURCHASES = 2      # unpaid purchases a user may hold at the same time, across all trips
+MAX_PENDING_PURCHASES = 2      # default of the max_pending_purchases setting (unpaid purchases per user)
 
 FREE = "FREE"
 TAKEN = "TAKEN"
@@ -344,8 +345,9 @@ def _check_travel_date(travel_date, departure):
     today = now.date()
     if travel_date < today:
         raise PurchaseError("No se pueden comprar pasajes para fechas pasadas")
-    if travel_date > today + timedelta(days=SALES_WINDOW_DAYS):
-        raise PurchaseError(f"Solo se venden pasajes hasta {SALES_WINDOW_DAYS} días adelante")
+    window = sales_window_days()
+    if travel_date > today + timedelta(days=window):
+        raise PurchaseError(f"Solo se venden pasajes hasta {window} días adelante")
     if travel_date == today and departure["departure_time"] <= now.strftime("%H:%M"):
         raise PurchaseError("Ese bus ya salió hoy. Elige otra hora u otro día")
 
@@ -407,9 +409,10 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers, contact_phone=N
                WHERE p.user_id = %s AND t.status IN ('RESERVED', 'PAYING');""",
             (user_id,),
         )
-        if cursor.fetchone()[0] >= MAX_PENDING_PURCHASES:
+        max_pending = get_setting("max_pending_purchases")
+        if cursor.fetchone()[0] >= max_pending:
             raise PurchaseError(
-                f"Ya tienes {MAX_PENDING_PURCHASES} compras sin pagar. Págalas o cancélalas en Mis viajes "
+                f"Ya tienes {max_pending} {'compra' if max_pending == 1 else 'compras'} sin pagar. Págalas o cancélalas en Mis viajes "
                 "antes de apartar más asientos.",
                 409,
             )
@@ -560,6 +563,9 @@ def confirm_payment(payment_id, user_id=None):
         if all(status == PAID for _, status in rows):
             return PAID  # it was already confirmed (for example, the user reloaded the page)
 
+        cursor.execute("SELECT status FROM payments WHERE id = %s;", (payment_id,))
+        if cursor.fetchone()[0] == PAYMENT_REFUNDED:
+            return rows[0][1]  # the terminal already gave this money back: a repeated webhook changes nothing
         status = rows[0][1]
         event = CONFIRM_PAYMENT if status == PAYING else RECOVER_PAYMENT
         new_status = next_status(status, event)

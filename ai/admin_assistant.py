@@ -10,7 +10,7 @@ the person confirming it.
 
 from ai.gemini import generate_content
 from ai.orchestrator import FALLBACK_REPLY, GEMINI_USER_ROLE, TOO_MANY_STEPS_REPLY, MAX_TOOL_ROUNDS, to_gemini_contents
-from services import admin
+from services import admin, settings
 from services.dates import InvalidDateError, now_in_colombia, parse_travel_date
 
 MAX_ACTIONS = 5
@@ -29,6 +29,11 @@ Rules:
 - Prices are in Colombian pesos: "85 mil" is 85000, "ciento veinte mil" is 120000. Write prices like $85.000.
 - To change the price of every departure of a route, use propose_route_price. For one departure, use propose_departure_price.
 - The reservation time (minutes to pay before the seats are released) is between 5 and 30 minutes; seats per purchase between 1 and 10.
+- To move a departure to another hour, use propose_departure_time. To change the duration of a route, use propose_route_duration.
+- The texts and general rules of the app (home page title and text, notice banner for travellers, chat greeting,
+  terminal address, phones and email, days ahead tickets are sold, unpaid purchases per traveller, minutes to arrive
+  before boarding, extra instructions for the travellers' chat) are changed with propose_setting. Use list_settings
+  to see the keys and current values. Only the terminal admin can change them.
 - If a tool answers with an error, explain it in simple words.
 - If they ask about something unrelated to running the terminal, say kindly that you only help with the admin panel.
 
@@ -57,6 +62,14 @@ TOOL_DECLARATIONS = [
           {"departure_id": INTEGER, "price": INTEGER}, ["departure_id", "price"]),
     _tool("propose_departure_on_sale", "Proposes taking a departure off sale (on_sale false) or back on sale (true).",
           {"departure_id": INTEGER, "on_sale": {"type": "boolean"}}, ["departure_id", "on_sale"]),
+    _tool("propose_departure_time", "Proposes moving one departure to another hour (HH:MM, 24 hours).",
+          {"departure_id": INTEGER, "departure_time": {"type": "string"}}, ["departure_id", "departure_time"]),
+    _tool("propose_route_duration", "Proposes a new travel time in minutes for a route.",
+          {"route_id": INTEGER, "duration_min": INTEGER}, ["route_id", "duration_min"]),
+    _tool("list_settings", "Texts and general rules of the app with their key, current value and limits."),
+    _tool("propose_setting", "Proposes a new value for one text or general rule of the app (admin only).",
+          {"key": {"type": "string"}, "text_value": {"type": "string", "description": "For texts."},
+           "number_value": {"type": "integer", "description": "For numbers."}}, ["key"]),
     _tool("propose_company_settings",
           "Proposes new settings for a company: minutes to pay before the seats are released and/or seats per purchase.",
           {"company_id": INTEGER, "reservation_minutes": INTEGER, "max_seats_per_purchase": INTEGER}, ["company_id"]),
@@ -152,6 +165,42 @@ class AdminTools:
         summary = f"Dejar a {company['name']} con " + " y ".join(changes)
         return self._propose(summary, f"/admin/companies/{company_id}/settings", body)
 
+    def propose_departure_time(self, departure_id, departure_time):
+        departure_time = admin.check_time(departure_time)
+        route, departure = self._find_departure(departure_id)
+        summary = (f"Mover la salida de las {departure['departure_time']} de {route['company']} a "
+                   f"{route['destination']} para las {departure_time}")
+        return self._propose(summary, f"/admin/departures/{departure_id}", {"departure_time": departure_time})
+
+    def propose_route_duration(self, route_id, duration_min):
+        admin._check_range(duration_min, admin.MIN_DURATION, admin.MAX_DURATION, "La duración no es válida")
+        route = next((r for r in self._routes() if r["id"] == route_id), None)
+        if route is None:
+            raise admin.AdminError("No encontré esa ruta", 404)
+        summary = f"Dejar la ruta de {route['company']} a {route['destination']} en {duration_min} minutos de viaje"
+        return self._propose(summary, f"/admin/routes/{route_id}", {"duration_min": duration_min})
+
+    def list_settings(self):
+        return {"settings": [
+            {"key": item["key"], "label": item["label"], "value": item["value"], "min": item["min"], "max": item["max"],
+             "kind": item["kind"]}
+            for item in settings.describe_settings()
+        ]}
+
+    def propose_setting(self, key, text_value=None, number_value=None):
+        if self.scope is not None:
+            raise admin.AdminError("Solo el administrador de la terminal puede cambiar los textos y reglas generales", 403)
+        if key not in settings.SETTINGS:
+            raise admin.AdminError("Ese ajuste no existe")
+        value = number_value if settings.SETTINGS[key][1] == settings.NUMBER else (text_value or "")
+        try:
+            value = settings.check_value(key, value)
+        except settings.SettingError as error:
+            raise admin.AdminError(error.message)
+        label = settings.SETTINGS[key][2]
+        shown = f'"{value}"' if isinstance(value, str) else value
+        return self._propose(f"Cambiar {label.lower()} a {shown}", "/admin/settings", {key: value})
+
     def run(self, name, arguments):
         tools = {
             "list_routes": lambda: self.list_routes(arguments.get("destination", "")),
@@ -163,6 +212,14 @@ class AdminTools:
                 _integer(arguments, "departure_id"), _integer(arguments, "price")),
             "propose_departure_on_sale": lambda: self.propose_departure_on_sale(
                 _integer(arguments, "departure_id"), bool(arguments.get("on_sale"))),
+            "propose_departure_time": lambda: self.propose_departure_time(
+                _integer(arguments, "departure_id"), str(arguments.get("departure_time", ""))),
+            "propose_route_duration": lambda: self.propose_route_duration(
+                _integer(arguments, "route_id"), _integer(arguments, "duration_min")),
+            "list_settings": self.list_settings,
+            "propose_setting": lambda: self.propose_setting(
+                str(arguments.get("key", "")), arguments.get("text_value"),
+                _integer(arguments, "number_value", None)),
             "propose_company_settings": lambda: self.propose_company_settings(
                 _integer(arguments, "company_id"), _integer(arguments, "reservation_minutes", None),
                 _integer(arguments, "max_seats_per_purchase", None)),

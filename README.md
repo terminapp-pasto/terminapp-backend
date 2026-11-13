@@ -85,6 +85,23 @@ because TerminAPP is used by travellers in Colombia.
 | GET | `/admin/users?q=` | **admin**: finds users by name or email |
 | POST | `/admin/users/{id}/role` | **admin**: `role` `user`, `company` (with `company_id`) or `admin` |
 
+| POST | `/admin/companies/{id}` | **admin**: renames a company |
+| POST | `/admin/destinations/{id}` | **admin**: renames a town everywhere |
+| POST | `/admin/buses/{id}` | Changes `plate` or `capacity` (it can only shrink while no seat above the new number is sold) |
+| POST | `/admin/routes/{id}` | Changes `duration_min` |
+| POST | `/admin/document-types/{code}` | **admin**: edits name, lengths or letters |
+| GET | `/settings` | Public texts and rules: home page, notice banner, chat greeting, footer contact, sales window, boarding time |
+| GET / POST | `/admin/settings` | **admin**: every text and general rule with its limits / changes them (`{"key": value}`) |
+| GET | `/admin/purchases?q=&date=` | Finds purchases by booking code, email, name or document |
+| POST | `/admin/purchases/{id}/cancel` | Cancels an unpaid purchase and frees its seats |
+| POST | `/admin/purchases/{id}/refund` | Gives the money of a paid purchase back through Stripe and frees its seats |
+
+`POST /admin/departures/{id}` also accepts `departure_time`, only while the departure has no tickets for future trips.
+
+**Everything is editable from the panel**, so a change asked in class never needs new code: the texts of the home page,
+the notice banner, the footer, the sales window, unpaid purchases per traveller, the boarding time and extra
+instructions for the travellers' AI chat live in the `app_settings` table (script 11; a missing key uses its default).
+
 **The AI never changes anything by itself.** For "cámbiame el precio de Cali a 85 mil" it looks up the routes and
 calls a `propose_` tool; the backend checks the price and the permissions and returns the change as an action with a
 summary. Only the panel's **Confirmar** button calls the real route.
@@ -186,12 +203,13 @@ stateDiagram-v2
     PAYING --> EXPIRED: expire (same deadline; the Stripe session is closed)
     EXPIRED --> PAID: recover_payment (Stripe says it was paid)
     CANCELLED --> PAID: recover_payment
+    PAID --> CANCELLED: refund (the admin gives the money back)
     PAID --> [*]
 ```
 
 ### Automated tests
 
-`tests/` has 127 tests: the 10 structures, authentication, dates, form validation and purchases against a real
+`tests/` has 133 tests: the 10 structures, authentication, dates, form validation and purchases against a real
 database. The purchase tests cover more than the happy path: taken seat, invalid or huge data, another user touching
 my purchase, cancelling, expiring, paying twice and **two people asking for the last seat at the same time**.
 
@@ -225,6 +243,7 @@ runs without its columns. They can also be run by hand; running them twice is ha
 | `07_booking_codes.sql` | `payments.booking_code` with a unique index; existing purchases get a code too |
 | `08_document_types.sql` | `passengers.document_type` (`CC`, `TI`, `CE`, `PA`); existing passengers get `CC` |
 | `09_roles_and_settings.sql` | `users.role` and `users.company_id`; per-company `max_seats_per_purchase` and `reservation_minutes`; `schedules.bus_id` and `schedules.active`; `payments.contact_phone`; `tickets.checked_bags`; the `document_types` table |
+| `11_app_settings.sql` | `app_settings` (key, value): the texts and general rules the admin edits |
 | `10_colombia_routes.sql` | 15 more destinations from Pasto (Popayán, Medellín, Pereira, Bucaramanga, Barranquilla...) with their departures; reference prices the admin can change |
 
 The first 5 tables support the search; the rest support roles, authentication, purchases, payments and the AI chat.

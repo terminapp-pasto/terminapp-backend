@@ -524,3 +524,253 @@ def occupancy(company_scope, travel_date):
     }
     totals["occupancy_percent"] = round((totals["sold"] + totals["held"]) * 100 / totals["seats"]) if totals["seats"] else 0
     return {"date": travel_date.isoformat(), "totals": totals, "departures": departures}
+
+
+# ------------------------------------------------------------------
+# Editing what already exists
+# ------------------------------------------------------------------
+
+def rename_company(company_id, name):
+    """Admin only."""
+    name = normalize_spaces(name).upper()
+    if not COMPANY_PATTERN.match(name):
+        raise AdminError("El nombre de la empresa debe tener de 3 a 60 letras o números")
+    try:
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute("UPDATE companies SET name = %s WHERE id = %s RETURNING id;", (name, company_id))
+            if cursor.fetchone() is None:
+                raise AdminError("No encontramos esa empresa", 404)
+    except psycopg.errors.UniqueViolation:
+        raise AdminError("Ya existe una empresa con ese nombre", 409)
+    return {"id": company_id, "name": name}
+
+
+def rename_destination(destination_id, name):
+    """Admin only. Fixes a town's name everywhere (search, tickets, history)."""
+    name = normalize_spaces(name)
+    if not PLACE_PATTERN.match(name):
+        raise AdminError("El destino debe tener de 3 a 40 letras")
+    try:
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute("UPDATE destinations SET name = %s WHERE id = %s RETURNING id;", (name, destination_id))
+            if cursor.fetchone() is None:
+                raise AdminError("No encontramos ese destino", 404)
+    except psycopg.errors.UniqueViolation:
+        raise AdminError("Ya existe un destino con ese nombre", 409)
+    return {"id": destination_id, "name": name}
+
+
+def _future_live_tickets(cursor, where, value):
+    cursor.execute(
+        f"""SELECT COUNT(*) FROM tickets t JOIN schedules s ON s.id = t.schedule_id
+            WHERE {where} = %s AND t.travel_date >= %s AND t.status IN ('RESERVED', 'PAYING', 'PAID');""",
+        (value, today_in_colombia()),
+    )
+    return cursor.fetchone()[0]
+
+
+def update_bus(company_scope, bus_id, plate=None, capacity=None):
+    """Changes the plate or the capacity. Capacity can only shrink while no seat above the
+    new number is sold or held on a future trip."""
+    if plate is None and capacity is None:
+        raise AdminError("No hay nada que cambiar")
+    if plate is not None:
+        plate = check_plate(plate)
+    if capacity is not None:
+        _check_range(capacity, MIN_CAPACITY, MAX_CAPACITY,
+                     f"La capacidad debe estar entre {MIN_CAPACITY} y {MAX_CAPACITY} sillas")
+    try:
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT company_id, capacity FROM buses WHERE id = %s;", (bus_id,))
+            row = cursor.fetchone()
+            if row is None:
+                raise AdminError("No encontramos ese bus", 404)
+            _own(company_scope, row[0])
+            if capacity is not None and capacity < row[1]:
+                _expire_old_reservations(cursor)
+                cursor.execute(
+                    """SELECT COUNT(*) FROM tickets t JOIN seats st ON st.id = t.seat_id
+                       WHERE st.bus_id = %s AND st.number > %s AND t.travel_date >= %s
+                         AND t.status IN ('RESERVED', 'PAYING', 'PAID');""",
+                    (bus_id, capacity, today_in_colombia()),
+                )
+                if cursor.fetchone()[0] > 0:
+                    raise AdminError(
+                        f"Hay pasajes vendidos o apartados en sillas mayores a {capacity}. "
+                        "No se puede achicar el bus por ahora", 409
+                    )
+            if capacity is not None:
+                # seats are never deleted (old tickets point to them); missing ones are added
+                cursor.execute(
+                    """INSERT INTO seats (bus_id, number) SELECT %s, n FROM generate_series(1, %s) AS n
+                       ON CONFLICT (bus_id, number) DO NOTHING;""",
+                    (bus_id, capacity),
+                )
+                cursor.execute("UPDATE schedules SET seats = %s WHERE bus_id = %s;", (capacity, bus_id))
+            cursor.execute(
+                """UPDATE buses SET plate = COALESCE(%s, plate), capacity = COALESCE(%s, capacity)
+                   WHERE id = %s RETURNING plate, capacity;""",
+                (plate, capacity, bus_id),
+            )
+            new_plate, new_capacity = cursor.fetchone()
+    except psycopg.errors.UniqueViolation:
+        raise AdminError("Ya existe un bus con esa placa", 409)
+    return {"id": bus_id, "plate": new_plate, "capacity": new_capacity}
+
+
+def update_route(company_scope, route_id, duration_min):
+    _check_range(duration_min, MIN_DURATION, MAX_DURATION,
+                 f"La duración debe estar entre {MIN_DURATION} y {MAX_DURATION} minutos")
+    with connect() as connection, connection.cursor() as cursor:
+        _own(company_scope, _route_company(cursor, route_id))
+        cursor.execute("UPDATE routes SET duration_min = %s WHERE id = %s;", (duration_min, route_id))
+    return {"id": route_id, "duration_min": duration_min}
+
+
+def change_departure_time(company_scope, schedule_id, departure_time):
+    """Moves a departure to another hour. Not allowed while it has tickets for future trips,
+    because those travellers bought another hour."""
+    departure_time = check_time(departure_time)
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT r.company_id, s.route_id FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = %s;",
+            (schedule_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise AdminError("No encontramos esa salida", 404)
+        _own(company_scope, row[0])
+        _expire_old_reservations(cursor)
+        if _future_live_tickets(cursor, "t.schedule_id", schedule_id) > 0:
+            raise AdminError(
+                "Esta salida ya tiene pasajes vendidos o apartados. Para no cambiarle la hora a esos viajeros, "
+                "pausa esta salida y crea otra con la hora nueva", 409
+            )
+        cursor.execute(
+            "SELECT 1 FROM schedules WHERE route_id = %s AND departure_time = %s AND id <> %s;",
+            (row[1], departure_time, schedule_id),
+        )
+        if cursor.fetchone() is not None:
+            raise AdminError(f"Esa ruta ya tiene una salida a las {departure_time}", 409)
+        cursor.execute("UPDATE schedules SET departure_time = %s WHERE id = %s;", (departure_time, schedule_id))
+    return {"id": schedule_id, "departure_time": departure_time}
+
+
+def update_document_type(code, name=None, min_length=None, max_length=None, allows_letters=None):
+    """Admin only. Old tickets keep their document; the new rule applies to new purchases."""
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT name, min_length, max_length, allows_letters FROM document_types WHERE code = %s;", (code,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise AdminError("No encontramos ese tipo de documento", 404)
+        name = normalize_spaces(name) if name is not None else row[0]
+        min_length = row[1] if min_length is None else min_length
+        max_length = row[2] if max_length is None else max_length
+        allows_letters = row[3] if allows_letters is None else bool(allows_letters)
+        if not DOCUMENT_NAME_PATTERN.match(name):
+            raise AdminError("El nombre debe tener de 3 a 40 letras")
+        _check_range(min_length, 3, 12, "La longitud mínima debe estar entre 3 y 12")
+        _check_range(max_length, min_length, 12, "La longitud máxima debe estar entre la mínima y 12")
+        cursor.execute(
+            """UPDATE document_types SET name = %s, min_length = %s, max_length = %s, allows_letters = %s
+               WHERE code = %s;""",
+            (name, min_length, max_length, allows_letters, code),
+        )
+    return {"code": code, "name": name, "min_length": min_length, "max_length": max_length,
+            "allows_letters": allows_letters}
+
+
+# ------------------------------------------------------------------
+# Purchases (support: find a purchase, cancel it or give the money back)
+# ------------------------------------------------------------------
+
+PURCHASES_QUERY = """
+    SELECT pm.id, pm.booking_code, pm.status, pm.amount, pm.created_at, pm.contact_phone, pm.stripe_session_id,
+           u.name, u.email, c.name, d.name, s.departure_time, MIN(t.travel_date), MIN(t.status),
+           string_agg(st.number::text || ' ' || p.name || ' (' || p.document_type || ' ' || p.document || ')',
+                      ', ' ORDER BY st.number)
+    FROM payments pm
+    JOIN tickets t ON t.payment_id = pm.id
+    JOIN passengers p ON p.id = t.passenger_id
+    JOIN users u ON u.id = p.user_id
+    JOIN seats st ON st.id = t.seat_id
+    JOIN schedules s ON s.id = t.schedule_id
+    JOIN routes r ON r.id = s.route_id
+    JOIN companies c ON c.id = r.company_id
+    JOIN destinations d ON d.id = r.destination_id
+    WHERE (%(scope)s::int IS NULL OR c.id = %(scope)s::int)
+      AND (%(date)s::date IS NULL OR t.travel_date = %(date)s::date)
+      AND (%(text)s = '' OR pm.booking_code = upper(%(text)s) OR u.email ILIKE %(pattern)s
+           OR p.name ILIKE %(pattern)s OR p.document = %(text)s)
+    GROUP BY pm.id, u.name, u.email, c.name, d.name, s.departure_time
+    ORDER BY pm.created_at DESC
+    LIMIT 50;
+"""
+
+
+def find_purchases(company_scope, text="", travel_date=None):
+    text = normalize_spaces(text)[:100]
+    with connect() as connection, connection.cursor() as cursor:
+        _expire_old_reservations(cursor)
+        cursor.execute(PURCHASES_QUERY, {"scope": company_scope, "date": travel_date, "text": text,
+                                         "pattern": f"%{text}%"})
+        rows = cursor.fetchall()
+    return [
+        {"payment_id": row[0], "booking_code": row[1], "payment_status": row[2], "total": row[3],
+         "purchased_at": row[4].isoformat(), "contact_phone": row[5], "paid_online": row[6] is not None,
+         "buyer": row[7], "buyer_email": row[8], "company": row[9], "destination": row[10],
+         "departure_time": row[11].strftime("%H:%M"), "date": row[12].isoformat(), "status": row[13],
+         "passengers": row[14]}
+        for row in rows
+    ]
+
+
+def _purchase_for_staff(cursor, company_scope, payment_id):
+    cursor.execute(
+        """SELECT MIN(t.status), MIN(r.company_id), pm.stripe_session_id, pm.status
+           FROM tickets t JOIN schedules s ON s.id = t.schedule_id JOIN routes r ON r.id = s.route_id
+           JOIN payments pm ON pm.id = t.payment_id
+           WHERE t.payment_id = %s GROUP BY pm.stripe_session_id, pm.status;""",
+        (payment_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise AdminError("No encontramos esa compra", 404)
+    _own(company_scope, row[1])
+    return row[0], row[2], row[3]
+
+
+def cancel_purchase_as_staff(company_scope, payment_id):
+    """Cancels an unpaid purchase and frees its seats. Returns the Stripe session to close."""
+    from services.purchases import PAYMENT_CANCELLED, next_status
+    from structs.state_machine import CANCEL
+    with connect() as connection, connection.cursor() as cursor:
+        status, stripe_session_id, _ = _purchase_for_staff(cursor, company_scope, payment_id)
+        try:
+            new_status = next_status(status, CANCEL)
+        except Exception:
+            raise AdminError("Solo se pueden cancelar compras sin pagar. Si ya está pagada, usa Devolver dinero", 409)
+        cursor.execute("UPDATE tickets SET status = %s WHERE payment_id = %s;", (new_status, payment_id))
+        cursor.execute("UPDATE payments SET status = %s WHERE id = %s;", (PAYMENT_CANCELLED, payment_id))
+    return stripe_session_id
+
+
+def refund_purchase_as_staff(company_scope, payment_id, refund):
+    """Gives the money of a paid purchase back (refund is the Stripe call, passed in so the
+    tests do not need Stripe) and frees its seats."""
+    from services.purchases import PAYMENT_REFUNDED, next_status
+    from structs.state_machine import REFUND
+    with connect() as connection, connection.cursor() as cursor:
+        status, stripe_session_id, _ = _purchase_for_staff(cursor, company_scope, payment_id)
+        try:
+            new_status = next_status(status, REFUND)
+        except Exception:
+            raise AdminError("Solo se puede devolver el dinero de una compra pagada", 409)
+        if not stripe_session_id:
+            raise AdminError("Esta compra no se pagó con Stripe: no hay dinero que devolver", 409)
+        refund(stripe_session_id)  # if Stripe fails, nothing changes in the database
+        cursor.execute("UPDATE tickets SET status = %s WHERE payment_id = %s;", (new_status, payment_id))
+        cursor.execute("UPDATE payments SET status = %s WHERE id = %s;", (PAYMENT_REFUNDED, payment_id))
+    return {"payment_id": payment_id, "status": new_status}
