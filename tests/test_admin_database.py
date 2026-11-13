@@ -199,5 +199,41 @@ class AdminDatabaseTest(unittest.TestCase):
         self.assertGreater(len(admin.occupancy(None, self.tomorrow)["departures"]), len(report["departures"]))
 
 
+    # ---------------- AI assistant ----------------
+
+    def test_assistant_only_proposes_changes(self):
+        from ai import admin_assistant
+        replies = iter([
+            {"role": "model", "parts": [{"functionCall": {"name": "list_routes", "args": {"destination": "cali"}}}]},
+            {"role": "model", "parts": [{"functionCall": {"name": "propose_route_price",
+                                                          "args": {"route_id": CALI_ROUTE, "price": 85000}}}]},
+            {"role": "model", "parts": [{"text": "Listo, revisa el cambio y dale Confirmar."}]},
+        ])
+        original = admin_assistant.generate_content
+        admin_assistant.generate_content = lambda *args: next(replies)
+        try:
+            answer = admin_assistant.generate_admin_reply(
+                [{"role": "user", "text": "cámbiame el precio de Cali a 85 mil"}], self.company, BOLIVARIANO
+            )
+        finally:
+            admin_assistant.generate_content = original
+        self.assertEqual(answer["actions"], [{
+            "summary": "Cambiar a $85.000 el precio de las 4 salidas de EXPRESO BOLIVARIANO a Cali",
+            "path": f"/admin/routes/{CALI_ROUTE}/price", "body": {"price": 85000},
+        }])
+        route = next(r for r in admin.list_routes(BOLIVARIANO) if r["id"] == CALI_ROUTE)
+        self.assertNotIn(85000, {d["price"] for d in route["departures"]})   # nothing changed yet
+
+    def test_assistant_respects_the_company_scope_and_ranges(self):
+        from ai.admin_assistant import AdminTools
+        tools = AdminTools(CONTINENTAL)
+        self.assertIn("error", tools.run("propose_route_price", {"route_id": CALI_ROUTE, "price": 85000}))
+        self.assertIn("error", tools.run("propose_company_settings", {"company_id": CONTINENTAL,
+                                                                      "reservation_minutes": 2}))
+        proposal = tools.run("propose_company_settings", {"company_id": CONTINENTAL, "reservation_minutes": 8})
+        self.assertIn("8 minutos para pagar", proposal["proposal"])
+        self.assertEqual(tools.actions[0]["body"], {"reservation_minutes": 8})
+
+
 if __name__ == "__main__":
     unittest.main()

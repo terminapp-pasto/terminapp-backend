@@ -4,7 +4,10 @@ only its own company. Changes use POST because the API only allows GET and POST.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from routes.dependencies import company_scope, require_admin, require_date, require_staff
+from ai.admin_assistant import generate_admin_reply
+from ai.gemini import AIError
+from routes.chat import ChatRequest
+from routes.dependencies import company_scope, limit_chat, require_admin, require_date, require_staff
 from services import admin
 from services.catalog import list_document_types
 from services.dates import today_in_colombia
@@ -154,6 +157,24 @@ def change_departure(schedule_id: int, request: DepartureChangeRequest, user: di
 def occupancy(date: str = Query("", max_length=10), user: dict = Depends(require_staff)):
     travel_date = require_date(date) if date else today_in_colombia()
     return admin.occupancy(company_scope(user), travel_date)
+
+
+@router.post(
+    "/admin/assistant",
+    summary="🔒 AI assistant of the panel: looks things up and prepares changes to confirm",
+    dependencies=[Depends(limit_chat)],
+)
+def assistant(request: ChatRequest, user: dict = Depends(require_staff)):
+    """The AI never changes anything: it returns `actions` (summary, path and body). The panel
+    shows each one with a Confirmar button, which calls that admin route."""
+    try:
+        return generate_admin_reply([m.model_dump() for m in request.messages], user, company_scope(user))
+    except AIError as error:
+        print("AI error:", error)
+        raise HTTPException(
+            status_code=502,
+            detail="El asistente no está disponible en este momento. Intenta de nuevo en unos segundos.",
+        )
 
 
 # ---------------- Admin only ----------------
