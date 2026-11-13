@@ -62,3 +62,15 @@ def upsert_user(name, email, password_hash, role=None):
             "company_id = CASE WHEN %s::text IS NULL THEN users.company_id ELSE NULL END;",
             (name, email, password_hash, role or ROLE_USER, role, role),
         )
+
+
+def make_company_account(email, company_name):
+    """Turns an existing account into the manager of a company (found by its name).
+    Returns False if that company does not exist, leaving the account as it was."""
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE users SET role = %s, company_id = c.id FROM companies c "
+            "WHERE users.email = %s AND upper(c.name) = upper(%s) RETURNING users.id;",
+            (ROLE_COMPANY, email, company_name),
+        )
+        return cursor.fetchone() is not None
