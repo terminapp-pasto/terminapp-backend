@@ -16,7 +16,7 @@ import config
 from authentication.utilities import encrypt_password
 from routes import admin, auth, chat, purchases, search, system
 from services.migrations import apply_pending_migrations
-from services.users import ROLE_ADMIN, upsert_user
+from services.users import ROLE_ADMIN, ROLE_USER, make_company_account, upsert_user
 
 API_VERSION = "2.0.0"
 INVALID_DATA_MESSAGE = "Algunos datos no son válidos o son demasiado largos. Revísalos e intenta de nuevo."
@@ -39,6 +39,21 @@ def create_test_account():
     create_account(config.TEST_ACCOUNT_NAME, config.TEST_ACCOUNT_EMAIL, config.TEST_ACCOUNT_PASSWORD, ROLE_ADMIN)
 
 
+def create_role_test_accounts():
+    """One test account per role, so the professor can check what each role sees:
+    a company manager (only its own company) and a traveler (buys tickets)."""
+    password = config.TEST_ACCOUNT_PASSWORD
+    create_account("Empresa de prueba", config.TEST_COMPANY_ACCOUNT_EMAIL, password, ROLE_USER)
+    create_account("Viajero de prueba", config.TEST_TRAVELER_ACCOUNT_EMAIL, password, ROLE_USER)
+    if not (config.TEST_COMPANY_ACCOUNT_EMAIL and password):
+        return
+    try:
+        if not make_company_account(config.TEST_COMPANY_ACCOUNT_EMAIL.strip().lower(), config.TEST_COMPANY_NAME):
+            print(f"The company {config.TEST_COMPANY_NAME} does not exist: the company test account stays a traveler")
+    except psycopg.Error as error:
+        print(f"Could not link the company test account: {error}")
+
+
 def create_admin_account():
     """The terminal admin account."""
     create_account(config.ADMIN_ACCOUNT_NAME, config.ADMIN_ACCOUNT_EMAIL, config.ADMIN_ACCOUNT_PASSWORD, ROLE_ADMIN)
@@ -59,6 +74,7 @@ def update_database():
 async def on_startup(_app):
     update_database()
     create_test_account()
+    create_role_test_accounts()
     create_admin_account()
     yield
 
