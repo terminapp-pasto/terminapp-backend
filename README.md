@@ -243,8 +243,8 @@ runs without its columns. They can also be run by hand; running them twice is ha
 | `07_booking_codes.sql` | `payments.booking_code` with a unique index; existing purchases get a code too |
 | `08_document_types.sql` | `passengers.document_type` (`CC`, `TI`, `CE`, `PA`); existing passengers get `CC` |
 | `09_roles_and_settings.sql` | `users.role` and `users.company_id`; per-company `max_seats_per_purchase` and `reservation_minutes`; `schedules.bus_id` and `schedules.active`; `payments.contact_phone`; `tickets.checked_bags`; the `document_types` table |
-| `11_app_settings.sql` | `app_settings` (key, value): the texts and general rules the admin edits |
 | `10_colombia_routes.sql` | 15 more destinations from Pasto (Popayán, Medellín, Pereira, Bucaramanga, Barranquilla...) with their departures; reference prices the admin can change |
+| `11_app_settings.sql` | `app_settings` (key, value): the texts and general rules the admin edits |
 
 The first 5 tables support the search; the rest support roles, authentication, purchases, payments and the AI chat.
 

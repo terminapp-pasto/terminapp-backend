@@ -232,7 +232,7 @@ def _find_or_create_destination(cursor, name, can_create):
 
 ROUTES_QUERY = """
     SELECT r.id, c.id, c.name, o.name, d.name, r.duration_min,
-           s.id, s.departure_time, s.price, s.active, b.id, b.plate, b.capacity
+           s.id, s.departure_time, s.price, s.active, b.id, b.plate, b.capacity, d.id
     FROM routes r
     JOIN companies c ON c.id = r.company_id
     JOIN destinations o ON o.id = r.origin_id
@@ -252,11 +252,12 @@ def list_routes(company_scope=None):
     routes = []
     by_id = {}
     for (route_id, company_id, company, origin, destination, duration, schedule_id, departure_time, price,
-         active, bus_id, plate, capacity) in rows:
+         active, bus_id, plate, capacity, destination_id) in rows:
         route = by_id.get(route_id)
         if route is None:
             route = {"id": route_id, "company_id": company_id, "company": company, "origin": origin,
-                     "destination": destination, "duration_min": duration, "departures": []}
+                     "destination": destination, "destination_id": destination_id, "duration_min": duration,
+                     "departures": []}
             by_id[route_id] = route
             routes.append(route)
         if schedule_id is not None:
