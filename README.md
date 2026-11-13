@@ -108,6 +108,15 @@ summary. Only the panel's **Confirmar** button calls the real route.
 
 **Admin account:** the professor's test account (`TEST_ACCOUNT_EMAIL` / `TEST_ACCOUNT_PASSWORD`, shown on the login
 page) is created as an admin when the backend starts, so one login opens the whole app, panel included.
+With the same password, two more test accounts are created, one per role:
+
+| Role | Email | What it sees |
+|---|---|---|
+| Admin | `TEST_ACCOUNT_EMAIL` (e.g. `profe@terminapp.co`) | Everything: all companies, settings, document types |
+| Company | `empresa.` + that email (`empresa.profe@terminapp.co`) | The panel of `TEST_COMPANY_NAME` only (Expreso Bolivariano by default) |
+| Traveler | `viajero.` + that email (`viajero.profe@terminapp.co`) | Buying tickets and Mis viajes, no panel |
+
+Their emails can be changed with `TEST_COMPANY_ACCOUNT_EMAIL` and `TEST_TRAVELER_ACCOUNT_EMAIL`.
 `ADMIN_ACCOUNT_EMAIL` and `ADMIN_ACCOUNT_PASSWORD` optionally add another admin. From the panel the admin turns
 other users into company employees.
 
