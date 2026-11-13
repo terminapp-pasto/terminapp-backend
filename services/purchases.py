@@ -20,11 +20,12 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg
 
+from services.catalog import document_type_rules
 from services.database import connect
 from services.dates import COLOMBIA_TIMEZONE, SALES_WINDOW_DAYS, now_in_colombia
 from services.validation import (
-    DEFAULT_DOCUMENT_TYPE, DOCUMENT_TYPE_RULE, NAME_RULE, document_rule, is_valid_document_of_type,
-    is_valid_document_type, is_valid_name, normalize_document, normalize_spaces,
+    DEFAULT_DOCUMENT_TYPE, NAME_RULE, PHONE_RULE, document_rule, document_type_rule, is_valid_document_of_type,
+    is_valid_document_type, is_valid_name, is_valid_phone, normalize_document, normalize_phone, normalize_spaces,
 )
 from structs.doubly_linked_list import DoublyLinkedList
 from structs.hash_table import HashTable
@@ -35,9 +36,16 @@ from structs.state_machine import (
     START_PAYMENT, TransitionError, purchase_state_machine,
 )
 
-RESERVATION_MINUTES = 15       # time to open the payment after reserving
-PAYMENT_WINDOW_MINUTES = 31    # time to finish paying once the payment is open (Stripe's minimum is 30)
+# Each company sets in the database how long an unpaid purchase holds the seats
+# (companies.reservation_minutes) and how many seats one purchase may take
+# (companies.max_seats_per_purchase). These are only the defaults.
+DEFAULT_RESERVATION_MINUTES = 10
 MAX_SEATS_PER_PURCHASE = 5
+SEATS_PER_PURCHASE_LIMIT = 10  # no company can allow more than this
+MAX_CHECKED_BAGS = 2
+# Purchases made before the deadline was stored (payments.expires_at) used these times
+RESERVATION_MINUTES = 15
+PAYMENT_WINDOW_MINUTES = 31
 MAX_PENDING_PURCHASES = 2      # unpaid purchases a user may hold at the same time, across all trips
 
 FREE = "FREE"
@@ -162,13 +170,16 @@ def next_status(current_status, event):
 
 def expiration_time(status, created_at, payment_expires_at=None):
     """Colombian time until which an unpaid purchase is held (None if not applicable).
-    A reservation lasts RESERVATION_MINUTES; an open payment lasts as long as its Stripe session."""
-    if status == RESERVED:
-        deadline = created_at + timedelta(minutes=RESERVATION_MINUTES)
-    elif status == PAYING:
-        deadline = payment_expires_at or created_at + timedelta(minutes=RESERVATION_MINUTES + PAYMENT_WINDOW_MINUTES)
-    else:
+    It is the deadline stored when the seats were reserved (the company's reservation
+    minutes). Old purchases without it keep the times they were made with."""
+    if status not in (RESERVED, PAYING):
         return None
+    if payment_expires_at is not None:
+        deadline = payment_expires_at
+    elif status == RESERVED:
+        deadline = created_at + timedelta(minutes=RESERVATION_MINUTES)
+    else:
+        deadline = created_at + timedelta(minutes=RESERVATION_MINUTES + PAYMENT_WINDOW_MINUTES)
     return deadline.astimezone(COLOMBIA_TIMEZONE)
 
 
@@ -186,32 +197,56 @@ def _new_booking_code(cursor):
             return code
 
 
-def clean_passengers(passengers):
-    """Validates the passengers (one per seat) and returns [(seat, name, document_type, document)].
-    document_type is optional and defaults to CC (national ID)."""
+def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_types=None):
+    """Validates the passengers (one per seat) and returns
+    [(seat, name, document_type, document, checked_bags)].
+    document_type is optional and defaults to CC (national ID); checked_bags defaults to 0.
+    The same person cannot travel twice in one purchase (same type and document)."""
     if not passengers:
         raise PurchaseError("Elige al menos un asiento")
-    if len(passengers) > MAX_SEATS_PER_PURCHASE:
-        raise PurchaseError(f"Puedes comprar máximo {MAX_SEATS_PER_PURCHASE} asientos por compra")
+    if len(passengers) > max_seats:
+        raise PurchaseError(f"Puedes comprar máximo {max_seats} asientos por compra")
 
     cleaned = []
     seen_seats = HashTable()
+    seen_documents = HashTable()
     for position, passenger in enumerate(passengers, start=1):
         seat = passenger["seat"]
         name = normalize_spaces(passenger["name"])
         document_type = str(passenger.get("document_type") or DEFAULT_DOCUMENT_TYPE).upper()
         document = normalize_document(passenger["document"])
+        checked_bags = passenger.get("checked_bags") or 0
         if seen_seats.contains(seat):
             raise PurchaseError(f"El asiento {seat} está repetido")
         seen_seats.put(seat, True)
         if not is_valid_name(name):
             raise PurchaseError(f"Pasajero {position}: {NAME_RULE}")
-        if not is_valid_document_type(document_type):
-            raise PurchaseError(f"Pasajero {position}: {DOCUMENT_TYPE_RULE}")
-        if not is_valid_document_of_type(document, document_type):
-            raise PurchaseError(f"Pasajero {position}: {document_rule(document_type)}")
-        cleaned.append((seat, name, document_type, document))
+        if not is_valid_document_type(document_type, document_types):
+            raise PurchaseError(f"Pasajero {position}: {document_type_rule(document_types)}")
+        if not is_valid_document_of_type(document, document_type, document_types):
+            raise PurchaseError(f"Pasajero {position}: {document_rule(document_type, document_types)}")
+        document_key = f"{document_type}:{document}"
+        if seen_documents.contains(document_key):
+            first = seen_documents.get(document_key)
+            raise PurchaseError(
+                f"Pasajero {position}: tiene el mismo documento que el pasajero {first}. "
+                "Cada pasajero debe tener su propio documento"
+            )
+        seen_documents.put(document_key, position)
+        if not isinstance(checked_bags, int) or not 0 <= checked_bags <= MAX_CHECKED_BAGS:
+            raise PurchaseError(f"Pasajero {position}: puede llevar de 0 a {MAX_CHECKED_BAGS} maletas en bodega")
+        cleaned.append((seat, name, document_type, document, checked_bags))
     return cleaned
+
+
+def clean_contact_phone(phone):
+    """The purchase's contact phone (optional): 10 digits starting with 3, or None."""
+    if phone is None or not str(phone).strip():
+        return None
+    phone = normalize_phone(phone)
+    if not is_valid_phone(phone):
+        raise PurchaseError(PHONE_RULE)
+    return phone
 
 
 # ------------------------------------------------------------------
@@ -220,15 +255,15 @@ def clean_passengers(passengers):
 
 DEPARTURE_QUERY = """
     SELECT s.id, s.departure_time, s.price, c.name, o.name, d.name,
-           r.duration_min, b.id, b.capacity, b.plate
+           r.duration_min, b.id, b.capacity, b.plate,
+           c.id, c.max_seats_per_purchase, c.reservation_minutes
     FROM schedules s
     JOIN routes r ON r.id = s.route_id
     JOIN companies c ON c.id = r.company_id
     JOIN destinations o ON o.id = r.origin_id
     JOIN destinations d ON d.id = r.destination_id
-    JOIN buses b ON b.company_id = r.company_id
-    WHERE s.id = %s
-    LIMIT 1;
+    JOIN buses b ON b.id = s.bus_id
+    WHERE s.id = %s;
 """
 
 TAKEN_SEATS_QUERY = """
@@ -243,10 +278,12 @@ PENDING_DEADLINES_QUERY = f"""
     SELECT t.payment_id, t.status, deadline, pm.stripe_session_id
     FROM (
         SELECT t.payment_id, t.status,
-               CASE WHEN t.status = 'RESERVED' THEN MIN(t.created_at) + INTERVAL '{RESERVATION_MINUTES} minutes'
-                    ELSE COALESCE(pm.expires_at,
-                                  MIN(t.created_at) + INTERVAL '{RESERVATION_MINUTES + PAYMENT_WINDOW_MINUTES} minutes')
-               END AS deadline
+               COALESCE(
+                   pm.expires_at,
+                   CASE WHEN t.status = 'RESERVED' THEN MIN(t.created_at) + INTERVAL '{RESERVATION_MINUTES} minutes'
+                        ELSE MIN(t.created_at) + INTERVAL '{RESERVATION_MINUTES + PAYMENT_WINDOW_MINUTES} minutes'
+                   END
+               ) AS deadline
         FROM tickets t JOIN payments pm ON pm.id = t.payment_id
         WHERE t.status IN ('RESERVED', 'PAYING')
         GROUP BY t.payment_id, t.status, pm.expires_at
@@ -294,6 +331,9 @@ def _get_departure(cursor, schedule_id, lock=False):
         "bus_id": row[7],
         "capacity": row[8],
         "plate": row[9],
+        "company_id": row[10],
+        "max_seats_per_purchase": row[11],
+        "reservation_minutes": row[12],
     }
 
 
@@ -341,15 +381,16 @@ def _cancel_pending_purchases_for_trip(cursor, user_id, schedule_id, travel_date
     return stripe_sessions
 
 
-def reserve_seats(user_id, schedule_id, travel_date, passengers):
-    """Holds the seats (one passenger per seat) for RESERVATION_MINUTES minutes.
-    passengers: list of {"seat", "name", "document"}."""
-    cleaned = clean_passengers(passengers)
-    numbers = [seat for seat, _, _, _ in cleaned]
+def reserve_seats(user_id, schedule_id, travel_date, passengers, contact_phone=None):
+    """Holds the seats (one passenger per seat) for the minutes the company chose.
+    passengers: list of {"seat", "name", "document_type", "document", "checked_bags"}."""
+    contact_phone = clean_contact_phone(contact_phone)
 
     with connect() as connection, connection.cursor() as cursor:
         _expire_old_reservations(cursor)
         departure = _get_departure(cursor, schedule_id, lock=True)
+        cleaned = clean_passengers(passengers, departure["max_seats_per_purchase"], document_type_rules(cursor))
+        numbers = [seat for seat, _, _, _, _ in cleaned]
         _check_travel_date(travel_date, departure)
 
         for number in numbers:
@@ -388,14 +429,16 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
         total = departure["price"] * len(numbers)
         booking_code = _new_booking_code(cursor)
         cursor.execute(
-            "INSERT INTO payments (amount, status, booking_code) VALUES (%s, 'PENDING', %s) RETURNING id, created_at;",
-            (total, booking_code),
+            """INSERT INTO payments (amount, status, booking_code, contact_phone, expires_at)
+               VALUES (%s, 'PENDING', %s, %s, NOW() + make_interval(mins => %s))
+               RETURNING id, created_at, expires_at;""",
+            (total, booking_code, contact_phone, departure["reservation_minutes"]),
         )
-        payment_id, created_at = cursor.fetchone()
+        payment_id, created_at, expires_at = cursor.fetchone()
 
         status = next_status(SELECTING, RESERVE)
         try:
-            for number, name, document_type, document in cleaned:
+            for number, name, document_type, document, checked_bags in cleaned:
                 cursor.execute(
                     """INSERT INTO passengers (user_id, name, document_type, document)
                        VALUES (%s, %s, %s, %s) RETURNING id;""",
@@ -403,9 +446,10 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
                 )
                 passenger_id = cursor.fetchone()[0]
                 cursor.execute(
-                    """INSERT INTO tickets (schedule_id, travel_date, status, passenger_id, seat_id, payment_id)
-                       VALUES (%s, %s, %s, %s, %s, %s);""",
-                    (schedule_id, travel_date, status, passenger_id, seat_ids.get(number), payment_id),
+                    """INSERT INTO tickets (schedule_id, travel_date, status, passenger_id, seat_id, payment_id,
+                                           checked_bags)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s);""",
+                    (schedule_id, travel_date, status, passenger_id, seat_ids.get(number), payment_id, checked_bags),
                 )
         except psycopg.errors.UniqueViolation:
             # someone else took the seat at the same instant: the unique index stopped it
@@ -419,11 +463,14 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers):
         "date": travel_date.isoformat(),
         "seats": sorted(numbers),
         "passengers": [
-            {"seat": seat, "name": name, "document_type": document_type, "document": document}
-            for seat, name, document_type, document in cleaned
+            {"seat": seat, "name": name, "document_type": document_type, "document": document,
+             "checked_bags": checked_bags}
+            for seat, name, document_type, document, checked_bags in cleaned
         ],
+        "contact_phone": contact_phone,
         "total": total,
-        "expires_at": expiration_time(status, created_at).isoformat(),
+        "reservation_minutes": departure["reservation_minutes"],
+        "expires_at": expiration_time(status, created_at, expires_at).isoformat(),
         "replaced_stripe_sessions": replaced_sessions,
     }
 
@@ -483,11 +530,13 @@ def get_payment_details(user_id, payment_id):
 
 
 def mark_as_paying(user_id, payment_id, stripe_session_id, expires_at):
-    """Saves the open Stripe session. The purchase is held exactly as long as that session lives."""
+    """Saves the open Stripe session. The purchase keeps the deadline set when the seats were
+    reserved (shorter than the 30 minutes Stripe requires): when it passes, the session is
+    closed. Old purchases without a deadline are held as long as the Stripe session lives."""
     with connect() as connection, connection.cursor() as cursor:
         status = _apply_event_to_payment(cursor, user_id, payment_id, START_PAYMENT)
         cursor.execute(
-            "UPDATE payments SET stripe_session_id = %s, expires_at = %s WHERE id = %s;",
+            "UPDATE payments SET stripe_session_id = %s, expires_at = COALESCE(expires_at, %s) WHERE id = %s;",
             (stripe_session_id, expires_at, payment_id),
         )
     return status
@@ -544,7 +593,7 @@ def cancel_purchase(user_id, payment_id):
 MY_TICKETS_QUERY = """
     SELECT t.id, t.payment_id, t.status, t.travel_date, s.departure_time, c.name,
            o.name, d.name, st.number, p.name, p.document_type, p.document, s.price, pm.amount,
-           pm.created_at, r.duration_min, pm.expires_at, pm.booking_code
+           pm.created_at, r.duration_min, pm.expires_at, pm.booking_code, t.checked_bags, pm.contact_phone
     FROM tickets t
     JOIN passengers p ON p.id = t.passenger_id
     JOIN seats st ON st.id = t.seat_id
@@ -571,13 +620,14 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
     for row in rows:
         (ticket_id, payment_id, status, travel_date, departure_time, company, origin, destination,
          seat, passenger, document_type, document, price, amount, purchased_at, duration_min, payment_expires_at,
-         booking_code) = row
+         booking_code, checked_bags, contact_phone) = row
         purchase = purchases_by_payment.get(payment_id)
         if purchase is None:
             expires_at = expiration_time(status, purchased_at, payment_expires_at)
             purchase = {
                 "payment_id": payment_id,
                 "booking_code": booking_code,
+                "contact_phone": contact_phone,
                 "status": status,
                 "date": travel_date.isoformat(),
                 "departure_time": departure_time.strftime("%H:%M"),
@@ -595,7 +645,7 @@ def get_my_tickets(user_id, order=NEWEST_FIRST):
             purchases_in_order.append(purchase)
         purchase["tickets"].append(
             {"ticket_id": ticket_id, "seat": seat, "passenger": passenger,
-             "document_type": document_type, "document": document}
+             "document_type": document_type, "document": document, "checked_bags": checked_bags}
         )
     return purchase_history(purchases_in_order, order)
 

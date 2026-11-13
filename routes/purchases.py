@@ -28,13 +28,15 @@ class PassengerData(BaseModel):
     name: str = Field(..., max_length=NAME_MAX_LENGTH * 2)
     document_type: str = Field(DEFAULT_DOCUMENT_TYPE, max_length=2, description="CC, TI, CE or PA")
     document: str = Field(..., max_length=DOCUMENT_MAX_LENGTH * 2)
+    checked_bags: int = Field(0, ge=0, le=purchases.MAX_CHECKED_BAGS, description="Bags in the hold, 0 to 2")
 
 
 class PurchaseRequest(BaseModel):
     schedule_id: int
     date: str = Field(..., max_length=10)
-    # one passenger per seat, between 1 and 5
-    passengers: list[PassengerData] = Field(..., min_length=1, max_length=purchases.MAX_SEATS_PER_PURCHASE)
+    # one passenger per seat; each company sets its own maximum (up to 10)
+    passengers: list[PassengerData] = Field(..., min_length=1, max_length=purchases.SEATS_PER_PURCHASE_LIMIT)
+    contact_phone: str | None = Field(None, max_length=20, description="Colombian mobile, for example 3001234567")
 
 
 @router.get("/schedules/{schedule_id}/seats", summary="Seat map of a departure on a date")
@@ -53,14 +55,16 @@ def seat_map(schedule_id: int, date: str):
     dependencies=[Depends(limit_purchases)],
 )
 def create_purchase(request: PurchaseRequest, user: dict = Depends(get_current_user)):
-    """🔒 Holds the seats (one passenger per seat). If the user already had an unpaid
-    purchase for this same trip, it is cancelled and replaced by this one."""
+    """🔒 Holds the seats (one passenger per seat) for the minutes the bus company chose.
+    If the user already had an unpaid purchase for this same trip, it is cancelled and
+    replaced by this one."""
     try:
         result = purchases.reserve_seats(
             user["id"],
             request.schedule_id,
             require_date(request.date),
             [passenger.model_dump() for passenger in request.passengers],
+            request.contact_phone,
         )
     except purchases.PurchaseError as error:
         raise to_http_error(error)
@@ -99,7 +103,8 @@ def confirm_or_refund(payment_id, user_id=None):
 def pay(payment_id: int, user: dict = Depends(get_current_user)):
     """🔒 Returns the client_secret used to draw the Stripe payment inside the page.
     If the purchase already has an open payment, it is reused instead of creating another.
-    The purchase is held exactly as long as the Stripe session lives."""
+    The purchase keeps the deadline set when the seats were reserved; when it passes,
+    the Stripe session is closed so it can no longer be paid."""
     try:
         details = purchases.get_payment_details(user["id"], payment_id)
         if details["stripe_session_id"]:
@@ -129,7 +134,7 @@ def pay(payment_id: int, user: dict = Depends(get_current_user)):
         "status": status,
         "client_secret": session["client_secret"],
         "ui_mode": session["ui_mode"],
-        "expires_at": expires_at.astimezone(COLOMBIA_TIMEZONE).isoformat(),
+        "expires_at": details["expires_at"] or expires_at.astimezone(COLOMBIA_TIMEZONE).isoformat(),
     }
 
 

@@ -43,15 +43,32 @@ class PassengersTest(unittest.TestCase):
 
     def test_one_passenger_per_seat(self):
         cleaned = clean_passengers([self.passenger(3), self.passenger(4, "Luis  Gómez", " 12345 ")])
-        self.assertEqual(cleaned, [(3, "Ana Pérez", "CC", "1085123456"), (4, "Luis Gómez", "CC", "12345")])
+        self.assertEqual(cleaned, [(3, "Ana Pérez", "CC", "1085123456", 0), (4, "Luis Gómez", "CC", "12345", 0)])
 
     def test_rejects_empty_too_many_or_repeated_seats(self):
         with self.assertRaises(PurchaseError):
             clean_passengers([])
         with self.assertRaises(PurchaseError):
-            clean_passengers([self.passenger(n) for n in range(1, MAX_SEATS_PER_PURCHASE + 2)])
+            clean_passengers([self.passenger(n, document=f"10851234{n:02d}") for n in range(1, MAX_SEATS_PER_PURCHASE + 2)])
         with self.assertRaises(PurchaseError):
             clean_passengers([self.passenger(5), self.passenger(5)])
+
+    def test_rejects_the_same_document_twice(self):
+        with self.assertRaises(PurchaseError) as context:
+            clean_passengers([self.passenger(1), self.passenger(2, "Luis Gómez", "1.085.123.456")])
+        self.assertIn("pasajero 1", context.exception.message)
+        # the same number with another document type is another person
+        cleaned = clean_passengers([self.passenger(1, document="123456"),
+                                    {"seat": 2, "name": "Luis Gómez", "document_type": "CE", "document": "123456"}])
+        self.assertEqual(len(cleaned), 2)
+
+    def test_company_limit_and_luggage(self):
+        with self.assertRaises(PurchaseError):
+            clean_passengers([self.passenger(1), self.passenger(2, document="12345")], max_seats=1)
+        cleaned = clean_passengers([dict(self.passenger(1), checked_bags=2)])
+        self.assertEqual(cleaned[0][4], 2)
+        with self.assertRaises(PurchaseError):
+            clean_passengers([dict(self.passenger(1), checked_bags=3)])
 
     def test_says_which_passenger_is_wrong(self):
         with self.assertRaises(PurchaseError) as context:
@@ -74,7 +91,7 @@ class DocumentTypeTest(unittest.TestCase):
 
     def test_passport_letters_are_accepted_and_uppercased(self):
         cleaned = clean_passengers([{"seat": 1, "name": "Ana Pérez", "document_type": "pa", "document": "ab123456"}])
-        self.assertEqual(cleaned, [(1, "Ana Pérez", "PA", "AB123456")])
+        self.assertEqual(cleaned, [(1, "Ana Pérez", "PA", "AB123456", 0)])
 
     def test_unknown_type_or_wrong_document_is_rejected(self):
         for document_type, document in (("XX", "1085123456"), ("TI", "12345")):

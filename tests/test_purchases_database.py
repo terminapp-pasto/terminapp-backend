@@ -19,15 +19,19 @@ from services.database import connect
 from services.dates import today_in_colombia
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
-SCRIPTS = ("01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql")
+SCRIPTS = (
+    "01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql",
+    "09_roles_and_settings.sql",
+)
 SESSION_ID = "cs_test_1"
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
 CALI_SCHEDULE_ID = 19        # Bolivariano Pasto → Cali 20:30, 40-seat bus
 LAST_SEAT = 40
 
 
-def passenger(seat, name="Ana Pérez", document="1085123456"):
-    return {"seat": seat, "name": name, "document": document}
+def passenger(seat, name="Ana Pérez", document=None):
+    # every seat gets its own document: the same person cannot travel twice in one purchase
+    return {"seat": seat, "name": name, "document": document or f"10851234{seat:02d}"}
 
 
 @unittest.skipUnless(TEST_DATABASE_URL, "Set TEST_DATABASE_URL to a disposable database to run these tests")
@@ -66,9 +70,17 @@ class PurchasesDatabaseTest(unittest.TestCase):
         self.travel_date = today_in_colombia() + timedelta(days=1)
 
     def open_payment(self, purchase, minutes):
-        """Simulates opening the Stripe payment, with a session that lives `minutes` more."""
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        """Simulates opening the Stripe payment, with `minutes` left before the purchase's deadline."""
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=31)
         purchases.mark_as_paying(purchase["user_id"], purchase["payment_id"], SESSION_ID, expires_at)
+        self.move_deadline(purchase, minutes)
+
+    def move_deadline(self, purchase, minutes):
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE payments SET expires_at = NOW() + make_interval(mins => %s) WHERE id = %s;",
+                (minutes, purchase["payment_id"]),
+            )
 
     def reserve(self, user_id, seats):
         purchase = purchases.reserve_seats(
@@ -196,19 +208,18 @@ class PurchasesDatabaseTest(unittest.TestCase):
             purchases.cancel_purchase(self.ana, purchase["payment_id"])
 
     def test_old_reservations_expire_and_free_the_seat(self):
-        self.reserve(self.ana, [12])
-        with connect() as connection, connection.cursor() as cursor:
-            cursor.execute("UPDATE tickets SET created_at = NOW() - INTERVAL '20 minutes';")
+        purchase = self.reserve(self.ana, [12])
+        self.move_deadline(purchase, -1)
         self.reserve(self.luis, [12])
         self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "EXPIRED")
 
     # ---------------- Payments that arrive late (audit finding 1) ----------------
 
-    def test_open_payment_lives_as_long_as_its_stripe_session(self):
+    def test_open_payment_lives_until_its_deadline(self):
         purchase = self.reserve(self.ana, [13])
         with connect() as connection, connection.cursor() as cursor:
             cursor.execute("UPDATE tickets SET created_at = NOW() - INTERVAL '40 minutes';")
-        self.open_payment(purchase, minutes=10)   # the Stripe session is still open
+        self.open_payment(purchase, minutes=3)    # still on time
         self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "PAYING")
         self.assertEqual(self.checked_sessions, [])
 
@@ -271,7 +282,7 @@ class PurchasesDatabaseTest(unittest.TestCase):
         reservation = purchases.reserve_seats(self.ana, 18, self.travel_date, [traveler, passenger(24)])
         self.assertEqual([p["document_type"] for p in reservation["passengers"]], ["PA", "CC"])
         tickets = purchases.get_my_tickets(self.ana)[0]["tickets"]
-        self.assertEqual([(t["document_type"], t["document"]) for t in tickets], [("PA", "X1234567"), ("CC", "1085123456")])
+        self.assertEqual([(t["document_type"], t["document"]) for t in tickets], [("PA", "X1234567"), ("CC", "1085123424")])
 
     def test_each_purchase_gets_its_own_booking_code(self):
         first = self.reserve(self.ana, [22])
@@ -279,6 +290,74 @@ class PurchasesDatabaseTest(unittest.TestCase):
         self.assertRegex(first["booking_code"], r"^[A-Z2-9]{6}$")
         self.assertNotEqual(first["booking_code"], second["booking_code"])
         self.assertEqual(purchases.get_my_tickets(self.ana)[0]["booking_code"], first["booking_code"])
+
+
+    # ---------------- Settings of each company ----------------
+
+    def set_company(self, **settings):
+        with connect() as connection, connection.cursor() as cursor:
+            for column, value in settings.items():
+                cursor.execute(f"UPDATE companies SET {column} = %s WHERE id = 3;", (value,))
+
+    def test_the_hold_lasts_the_minutes_the_company_chose(self):
+        self.set_company(reservation_minutes=7)
+        purchase = self.reserve(self.ana, [25])
+        self.assertEqual(purchase["reservation_minutes"], 7)
+        left = datetime.fromisoformat(purchase["expires_at"]) - datetime.now(timezone.utc)
+        self.assertTrue(timedelta(minutes=6) < left <= timedelta(minutes=7), left)
+        self.open_payment(purchase, minutes=-1)   # the Stripe session lives 31 minutes, the hold does not
+        self.reserve(self.luis, [25])
+        self.assertEqual(purchases.get_my_tickets(self.ana)[0]["status"], "EXPIRED")
+
+    def test_opening_the_payment_keeps_the_short_deadline(self):
+        self.set_company(reservation_minutes=5)
+        purchase = self.reserve(self.ana, [26])
+        stripe_expiration = datetime.now(timezone.utc) + timedelta(minutes=31)
+        purchases.mark_as_paying(self.ana, purchase["payment_id"], SESSION_ID, stripe_expiration)
+        details = purchases.get_payment_details(self.ana, purchase["payment_id"])
+        left = datetime.fromisoformat(details["expires_at"]) - datetime.now(timezone.utc)
+        self.assertLess(left, timedelta(minutes=6))
+
+    def test_each_company_sets_its_seats_per_purchase(self):
+        self.set_company(max_seats_per_purchase=2)
+        with self.assertRaises(purchases.PurchaseError) as context:
+            self.reserve(self.ana, [1, 2, 3])
+        self.assertIn("máximo 2", context.exception.message)
+        self.set_company(max_seats_per_purchase=7)
+        self.assertEqual(len(self.reserve(self.ana, range(1, 8))["seats"]), 7)
+
+    def test_same_document_twice_is_rejected(self):
+        with self.assertRaises(purchases.PurchaseError) as context:
+            self.reserve_with([passenger(1, document="1085123456"), passenger(2, document="1.085.123.456")])
+        self.assertIn("mismo documento", context.exception.message)
+
+    def reserve_with(self, travellers, phone=None):
+        return purchases.reserve_seats(self.ana, CALI_SCHEDULE_ID, self.travel_date, travellers, phone)
+
+    def test_phone_and_luggage_are_saved_and_shown(self):
+        travellers = [dict(passenger(27), checked_bags=2), passenger(28)]
+        purchase = self.reserve_with(travellers, "+57 300 123 4567")
+        self.assertEqual(purchase["contact_phone"], "3001234567")
+        history = purchases.get_my_tickets(self.ana)[0]
+        self.assertEqual(history["contact_phone"], "3001234567")
+        self.assertEqual([t["checked_bags"] for t in history["tickets"]], [2, 0])
+        for bad_phone in ("12345", "2001234567"):
+            with self.assertRaises(purchases.PurchaseError):
+                self.reserve_with([passenger(29)], bad_phone)
+        with self.assertRaises(purchases.PurchaseError):
+            self.reserve_with([dict(passenger(29), checked_bags=3)])
+
+    def test_a_new_document_type_from_the_database_is_accepted(self):
+        with connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO document_types (code, name, min_length, max_length, allows_letters) "
+                "VALUES ('PT', 'Permiso por protección temporal', 6, 10, FALSE);"
+            )
+            cursor.execute("UPDATE document_types SET active = FALSE WHERE code = 'TI';")
+        purchase = self.reserve_with([dict(passenger(30), document_type="PT", document="123456")])
+        self.assertEqual(purchase["passengers"][0]["document_type"], "PT")
+        with self.assertRaises(purchases.PurchaseError):
+            self.reserve_with([dict(passenger(31), document_type="TI", document="10851234567")])
 
 
 if __name__ == "__main__":
