@@ -28,13 +28,13 @@ Python, FastAPI, PostgreSQL (Neon), Gemini (AI), Stripe (test mode), Render.
 ```
 config.py            every environment variable (nothing is hardcoded)
 main.py              assembles the application and plugs in the routes
-routes/              HTTP routes: system, search, chat, auth, purchases
-services/            business logic: search, purchases, users, dates, validation, database
+routes/              HTTP routes: system, search, chat, auth, purchases, admin
+services/            business logic: search, purchases, admin, catalog, users, dates, validation, database
 structs/             the 10 data structures built from scratch
 authentication/      utilities.py (encrypt and verify passwords) and tokens.py (JWT)
-ai/                  gemini.py (provider), tools.py (tools), orchestrator.py (the chat)
+ai/                  gemini.py (provider), tools.py (tools), orchestrator.py (the chat), admin_assistant.py (admin panel AI)
 payments/            stripe_client.py (embedded Stripe payment in test mode)
-db/                  SQL scripts 01 to 08
+db/                  SQL scripts 01 to 10
 tests/               automated tests
 ```
 
@@ -51,20 +51,61 @@ because TerminAPP is used by travellers in Colombia.
 | POST | `/chat` | Receives the conversation (`{"messages": [{"role": "user", "text": "..."}]}`) and answers with the AI and the departures found |
 | POST | `/register` | Creates an account (the password is stored encrypted with PBKDF2) and returns a token |
 | POST | `/login` | Checks email and password and returns a JWT token valid for 24 hours |
-| GET | `/me` | 🔒 Protected route: returns the user who owns the token (`Authorization: Bearer <token>`) |
-| GET | `/schedules/{id}/seats?date=YYYY-MM-DD` | Map of the 40 seats of a departure on a date |
-| POST | `/purchases` | 🔒 Holds 1 to 5 seats for 15 minutes, with one passenger's details per seat |
+| GET | `/me` | 🔒 Protected route: returns the user who owns the token, with its `role` (`user`, `company` or `admin`) |
+| GET | `/schedules/{id}/seats?date=YYYY-MM-DD` | Seat map of a departure on a date (as many seats as its bus), with the company's seats per purchase and minutes to pay |
+| GET | `/document-types` | Active document types with their rule, for the purchase form |
+| POST | `/purchases` | 🔒 Holds the seats for the minutes the company chose, with one passenger per seat (`checked_bags` 0 to 2) and an optional `contact_phone` |
 | POST | `/purchases/{payment_id}/pay` | 🔒 Prepares the embedded Stripe payment; reuses an open one if it exists |
 | GET | `/purchases/confirm?session_id=...` | 🔒 Asks Stripe whether it was paid and confirms the tickets |
 | POST | `/purchases/{payment_id}/cancel` | 🔒 Cancels an unpaid purchase and frees the seats |
 | GET | `/my-tickets?order=newest` | 🔒 The user's purchase history (`newest` or `oldest`), with each booking code |
 | POST | `/stripe/webhook` | Stripe calls it when a payment is completed (signed with `STRIPE_WEBHOOK_SECRET`) |
 
+### Admin panel
+
+🔒 Only for the `admin` and `company` roles. The admin sees and changes every company; a company employee only its own
+(anything of another company answers `404`). Routes marked **admin** are only for the terminal admin. Changes use
+`POST`, because CORS only allows `GET` and `POST`.
+
+| Method | Route | What it does |
+|---|---|---|
+| GET | `/admin/companies` | Companies with their settings and how many buses, routes and departures they have |
+| POST | `/admin/companies` | **admin**: adds a company |
+| POST | `/admin/companies/{id}/settings` | `max_seats_per_purchase` (1 to 10) and `reservation_minutes` (5 to 30) |
+| GET / POST | `/admin/buses` | Lists buses / adds one with its seats (`plate` like `TRP-101`, `capacity` 10 to 60) |
+| GET | `/admin/destinations` | Every town |
+| GET / POST | `/admin/routes` | Routes with their departures / adds a route from Pasto (only the admin can add a new town) |
+| POST | `/admin/routes/{id}/price` | Same price for every departure of the route |
+| POST | `/admin/departures` | Adds a departure (`route_id`, `departure_time`, `price`, `bus_id`) |
+| POST | `/admin/departures/{id}` | Changes `price`, `bus_id` (only while no seat is sold) or `active` (on sale or not) |
+| GET | `/admin/occupancy?date=YYYY-MM-DD` | Sold, held and free seats of every bus that day, and the revenue |
+| POST | `/admin/assistant` | AI that looks things up and prepares changes; it returns `actions` that the panel confirms |
+| GET / POST | `/admin/document-types` | **admin**: every document type / adds one (`code`, `name`, `min_length`, `max_length`, `allows_letters`) |
+| POST | `/admin/document-types/{code}/active` | **admin**: turns a document type on or off |
+| GET | `/admin/users?q=` | **admin**: finds users by name or email |
+| POST | `/admin/users/{id}/role` | **admin**: `role` `user`, `company` (with `company_id`) or `admin` |
+
+**The AI never changes anything by itself.** For "cámbiame el precio de Cali a 85 mil" it looks up the routes and
+calls a `propose_` tool; the backend checks the price and the permissions and returns the change as an action with a
+summary. Only the panel's **Confirmar** button calls the real route.
+
+**Admin account:** set `ADMIN_ACCOUNT_EMAIL` and `ADMIN_ACCOUNT_PASSWORD` on Render and the backend creates it (or
+gives it the admin role) when it starts. From the panel the admin turns other users into company employees.
+
 ## Purchase rules
-- **One passenger per seat.** Buying 3 seats asks for 3 names and 3 documents.
-- **Document types.** Each passenger has a document type: `CC` (cédula, 5 to 10 digits), `TI` (tarjeta de
-  identidad, 10 or 11 digits), `CE` (cédula de extranjería, 5 to 12 digits) or `PA` (passport, letters and digits,
-  5 to 12). Dots, spaces and hyphens are removed before checking (`1.085.123.456` → `1085123456`).
+- **One passenger per seat.** Buying 3 seats asks for 3 names and 3 documents, and the same document cannot appear
+  twice in one purchase.
+- **Each company sets its rules** (`companies` table): how many seats one purchase may take (5 by default, up to 10)
+  and how many minutes an unpaid purchase holds the seats (10 by default, 5 to 30). The deadline is saved in
+  `payments.expires_at` when the seats are reserved, and opening the payment does not extend it: when it passes, the
+  Stripe session (which lives at least 30 minutes, Stripe's minimum) is closed and the seats are released.
+- **Price kept.** Stripe charges the price saved when the seats were reserved, even if the company changes it meanwhile.
+- **Document types** live in the `document_types` table: `CC` (cédula, 5 to 10 digits), `TI` (tarjeta de
+  identidad, 10 or 11 digits), `CE` (cédula de extranjería, 5 to 12 digits) and `PA` (passport, letters and digits,
+  5 to 12). The admin can add more or turn one off; each one is checked with a pattern built from its lengths.
+  Dots, spaces and hyphens are removed before checking (`1.085.123.456` → `1085123456`).
+- **Contact phone and luggage.** A purchase may save a Colombian mobile (`3XXXXXXXXX`; `+57` and spaces are removed)
+  and each passenger 0 to 2 checked bags.
 - **Booking code.** Every purchase gets a random 6-character code such as `K7M2QX`, without the characters that
   are easy to confuse (O/0, I/1). It is what the passenger shows when boarding.
 - **At most 2 unpaid purchases per user**, so nobody can hold half a bus without paying.
@@ -83,6 +124,8 @@ because TerminAPP is used by travellers in Colombia.
 
 - **Keys only in environment variables** (`.env` locally, Render in production). `.env` is in `.gitignore`, and
   Stripe always runs with test keys (`sk_test_...`).
+- **Roles.** `user` (traveller), `company` (one bus company) and `admin` (the terminal). The role is read from the
+  database on every request, so taking a role away works at once, and the admin cannot remove their own admin role.
 - **Passwords** are stored with PBKDF2 (salted hash), never in plain text. Sessions use JWT tokens signed with
   `TOKEN_SECRET` that expire after 24 hours.
 - **Rate limits** (`services/rate_limit.py`, built with our own hash table and queue): too many attempts in a row
@@ -137,8 +180,8 @@ stateDiagram-v2
     PAYING --> PAID: confirm_payment
     RESERVED --> CANCELLED: cancel
     PAYING --> CANCELLED: cancel
-    RESERVED --> EXPIRED: expire (15 min)
-    PAYING --> EXPIRED: expire (when the Stripe session ends, 31 min)
+    RESERVED --> EXPIRED: expire (the company's minutes, 10 by default)
+    PAYING --> EXPIRED: expire (same deadline; the Stripe session is closed)
     EXPIRED --> PAID: recover_payment (Stripe says it was paid)
     CANCELLED --> PAID: recover_payment
     PAID --> [*]
@@ -146,7 +189,7 @@ stateDiagram-v2
 
 ### Automated tests
 
-`tests/` has 77 tests: the 10 structures, authentication, dates, form validation and purchases against a real
+`tests/` has 127 tests: the 10 structures, authentication, dates, form validation and purchases against a real
 database. The purchase tests cover more than the happy path: taken seat, invalid or huge data, another user touching
 my purchase, cancelling, expiring, paying twice and **two people asking for the last seat at the same time**.
 
@@ -156,7 +199,7 @@ Run them with the environment activated:
 python -m unittest discover -s tests -v
 ```
 
-The 11 purchase tests need an **empty, disposable** database (for example a Neon branch), because they drop and
+The purchase and admin tests (`test_purchases_database.py`, `test_admin_database.py`) need an **empty, disposable** database (for example a Neon branch), because they drop and
 recreate the tables. Without that variable they are skipped:
 
 ```
@@ -178,7 +221,11 @@ runs without its columns. They can also be run by hand; running them twice is ha
 |---|---|
 | `06_payment_expiration.sql` | `payments.expires_at`: when the open Stripe payment, and the seat hold, ends |
 | `07_booking_codes.sql` | `payments.booking_code` with a unique index; existing purchases get a code too |
-| `08_document_types.sql` | `passengers.document_type` (`CC`, `TI`, `CE`, `PA`); existing passengers get `CC` | The first 5 tables support the search; the rest support authentication, purchases, payments and the AI chat.
+| `08_document_types.sql` | `passengers.document_type` (`CC`, `TI`, `CE`, `PA`); existing passengers get `CC` |
+| `09_roles_and_settings.sql` | `users.role` and `users.company_id`; per-company `max_seats_per_purchase` and `reservation_minutes`; `schedules.bus_id` and `schedules.active`; `payments.contact_phone`; `tickets.checked_bags`; the `document_types` table |
+| `10_colombia_routes.sql` | 15 more destinations from Pasto (Popayán, Medellín, Pereira, Bucaramanga, Barranquilla...) with their departures; reference prices the admin can change |
+
+The first 5 tables support the search; the rest support roles, authentication, purchases, payments and the AI chat.
 
 ```mermaid
 erDiagram
@@ -195,6 +242,9 @@ erDiagram
     PAYMENTS ||--o{ TICKETS : "covers"
     USERS ||--o{ CONVERSATIONS : "starts"
     CONVERSATIONS ||--o{ MESSAGES : "contains"
+    BUSES ||--o{ SCHEDULES : "runs"
+    COMPANIES ||--o{ USERS : "employs"
+    DOCUMENT_TYPES ||--o{ PASSENGERS : "identifies"
 
     COMPANIES {
         int id PK
