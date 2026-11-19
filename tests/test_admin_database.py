@@ -293,6 +293,16 @@ class AdminDatabaseTest(unittest.TestCase):
         admin.update_document_type("PA", name="Pasaporte extranjero", max_length=9)
         self.assertEqual(next(t for t in admin.list_document_types() if t["code"] == "PA")["max_length"], 9)
 
+    def test_double_decker_bus_of_100_seats(self):
+        bus = admin.create_bus(None, BOLIVARIANO, "EXB-100", 100)
+        admin.update_departure(None, CALI_SCHEDULE_ID, bus_id=bus["id"])
+        seat_map = purchases.get_seat_map(CALI_SCHEDULE_ID, self.tomorrow)
+        self.assertEqual(len(seat_map["seats"]), 100)
+        with self.assertRaises(admin.AdminError):
+            admin.create_bus(None, BOLIVARIANO, "EXB-101", 101)
+        with self.assertRaises(admin.AdminError):
+            admin.update_bus(None, bus["id"], capacity=120)
+
     def test_bus_capacity_and_departure_time(self):
         bus_id = admin.list_buses(BOLIVARIANO)[0]["id"]
         admin.update_bus(BOLIVARIANO, bus_id, capacity=44)
