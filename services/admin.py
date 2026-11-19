@@ -13,8 +13,12 @@ from services.catalog import read_document_types
 from services.database import connect
 from services.dates import today_in_colombia
 from services.purchases import (
-    DEFAULT_RESERVATION_MINUTES, MAX_SEATS_PER_PURCHASE, SEATS_PER_PURCHASE_LIMIT, _expire_old_reservations,
+    CHECKED_BAGS_LIMIT, DEFAULT_RESERVATION_MINUTES, MAX_SEATS_PER_PURCHASE, SEATS_PER_PURCHASE_LIMIT,
+    _expire_old_reservations,
 )
+
+MIN_BAG_WEIGHT_KG = 5
+MAX_BAG_WEIGHT_KG = 50
 from services.users import ROLE_ADMIN, ROLE_COMPANY, ROLES
 from services.validation import DOCUMENT_TYPE_CODE_PATTERN, normalize_spaces
 
@@ -68,6 +72,16 @@ def check_max_seats(seats):
                         f"Las sillas por compra deben estar entre 1 y {SEATS_PER_PURCHASE_LIMIT}")
 
 
+def check_max_checked_bags(bags):
+    return _check_range(bags, 0, CHECKED_BAGS_LIMIT,
+                        f"Las maletas en bodega por pasajero deben estar entre 0 y {CHECKED_BAGS_LIMIT}")
+
+
+def check_bag_weight(kilograms):
+    return _check_range(kilograms, MIN_BAG_WEIGHT_KG, MAX_BAG_WEIGHT_KG,
+                        f"El peso por maleta debe estar entre {MIN_BAG_WEIGHT_KG} y {MAX_BAG_WEIGHT_KG} kg")
+
+
 def check_time(text):
     text = str(text).strip()
     if len(text) == 4 and text[1] == ":":
@@ -99,7 +113,8 @@ COMPANIES_QUERY = """
            (SELECT COUNT(*) FROM buses b WHERE b.company_id = c.id),
            (SELECT COUNT(*) FROM routes r WHERE r.company_id = c.id),
            (SELECT COUNT(*) FROM schedules s JOIN routes r ON r.id = s.route_id
-            WHERE r.company_id = c.id AND s.active)
+            WHERE r.company_id = c.id AND s.active),
+           c.max_checked_bags, c.bag_weight_kg
     FROM companies c
     WHERE %(scope)s::int IS NULL OR c.id = %(scope)s::int
     ORDER BY c.name;
@@ -111,7 +126,8 @@ def list_companies(company_scope=None):
         cursor.execute(COMPANIES_QUERY, {"scope": company_scope})
         return [
             {"id": row[0], "name": row[1], "max_seats_per_purchase": row[2], "reservation_minutes": row[3],
-             "buses": row[4], "routes": row[5], "departures": row[6]}
+             "buses": row[4], "routes": row[5], "departures": row[6],
+             "max_checked_bags": row[7], "bag_weight_kg": row[8]}
             for row in cursor.fetchall()
         ]
 
@@ -137,27 +153,36 @@ def create_company(name, max_seats=MAX_SEATS_PER_PURCHASE, reservation_minutes=D
             "reservation_minutes": reservation_minutes}
 
 
-def update_company_settings(company_scope, company_id, max_seats=None, reservation_minutes=None):
-    """Seats per purchase and minutes to pay. Only affects new purchases."""
+def update_company_settings(company_scope, company_id, max_seats=None, reservation_minutes=None,
+                            max_checked_bags=None, bag_weight_kg=None):
+    """Seats per purchase, minutes to pay and baggage rules. Only affects new purchases."""
     _own(company_scope, company_id)
-    if max_seats is None and reservation_minutes is None:
+    if max_seats is None and reservation_minutes is None and max_checked_bags is None and bag_weight_kg is None:
         raise AdminError("No hay nada que cambiar")
     if max_seats is not None:
         check_max_seats(max_seats)
     if reservation_minutes is not None:
         check_reservation_minutes(reservation_minutes)
+    if max_checked_bags is not None:
+        check_max_checked_bags(max_checked_bags)
+    if bag_weight_kg is not None:
+        check_bag_weight(bag_weight_kg)
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(
             """UPDATE companies
                SET max_seats_per_purchase = COALESCE(%s, max_seats_per_purchase),
-                   reservation_minutes = COALESCE(%s, reservation_minutes)
-               WHERE id = %s RETURNING id, name, max_seats_per_purchase, reservation_minutes;""",
-            (max_seats, reservation_minutes, company_id),
+                   reservation_minutes = COALESCE(%s, reservation_minutes),
+                   max_checked_bags = COALESCE(%s, max_checked_bags),
+                   bag_weight_kg = COALESCE(%s, bag_weight_kg)
+               WHERE id = %s
+               RETURNING id, name, max_seats_per_purchase, reservation_minutes, max_checked_bags, bag_weight_kg;""",
+            (max_seats, reservation_minutes, max_checked_bags, bag_weight_kg, company_id),
         )
         row = cursor.fetchone()
     if row is None:
         raise AdminError("No encontramos esa empresa", 404)
-    return {"id": row[0], "name": row[1], "max_seats_per_purchase": row[2], "reservation_minutes": row[3]}
+    return {"id": row[0], "name": row[1], "max_seats_per_purchase": row[2], "reservation_minutes": row[3],
+            "max_checked_bags": row[4], "bag_weight_kg": row[5]}
 
 
 # ------------------------------------------------------------------

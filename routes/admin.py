@@ -40,6 +40,8 @@ class CompanyRequest(BaseModel):
 class CompanySettingsRequest(BaseModel):
     max_seats_per_purchase: int | None = None
     reservation_minutes: int | None = None
+    max_checked_bags: int | None = Field(None, description="Bags in the hold per passenger, 0 to 5")
+    bag_weight_kg: int | None = Field(None, description="Maximum weight of each bag, 5 to 50 kg")
 
 
 class BusRequest(BaseModel):
@@ -108,10 +110,11 @@ def create_company(request: CompanyRequest, _user: dict = Depends(require_admin)
     return run(admin.create_company, request.name, request.max_seats_per_purchase, request.reservation_minutes)
 
 
-@router.post("/admin/companies/{company_id}/settings", summary="🔒 Seats per purchase and minutes to pay")
+@router.post("/admin/companies/{company_id}/settings", summary="🔒 Seats per purchase, minutes to pay and baggage")
 def company_settings(company_id: int, request: CompanySettingsRequest, user: dict = Depends(require_staff)):
     return run(admin.update_company_settings, company_scope(user), company_id,
-               request.max_seats_per_purchase, request.reservation_minutes)
+               request.max_seats_per_purchase, request.reservation_minutes,
+               request.max_checked_bags, request.bag_weight_kg)
 
 
 @router.get("/admin/buses", summary="🔒 Buses and their capacity")
