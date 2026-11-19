@@ -21,7 +21,7 @@ from services.dates import today_in_colombia
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 SCRIPTS = (
     "01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql",
-    "09_roles_and_settings.sql",
+    "09_roles_and_settings.sql", "12_baggage_settings.sql",
 )
 SESSION_ID = "cs_test_1"
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
@@ -346,6 +346,18 @@ class PurchasesDatabaseTest(unittest.TestCase):
                 self.reserve_with([passenger(29)], bad_phone)
         with self.assertRaises(purchases.PurchaseError):
             self.reserve_with([dict(passenger(29), checked_bags=3)])
+
+    def test_bag_limit_comes_from_the_company(self):
+        def set_bolivariano_bags(bags):
+            with connect() as connection, connection.cursor() as cursor:
+                cursor.execute("UPDATE companies SET max_checked_bags = %s WHERE name = 'EXPRESO BOLIVARIANO';", (bags,))
+
+        set_bolivariano_bags(4)
+        self.addCleanup(set_bolivariano_bags, purchases.MAX_CHECKED_BAGS)
+        purchase = self.reserve_with([dict(passenger(30), checked_bags=4)])
+        self.assertEqual(purchase["passengers"][0]["checked_bags"], 4)
+        with self.assertRaises(purchases.PurchaseError):
+            self.reserve_with([dict(passenger(31), checked_bags=5)])
 
     def test_a_new_document_type_from_the_database_is_accepted(self):
         with connect() as connection, connection.cursor() as cursor:

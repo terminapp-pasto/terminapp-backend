@@ -25,7 +25,7 @@ TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 DB_FOLDER = Path(__file__).resolve().parent.parent / "db"
 SCRIPTS = (
     "01_tables.sql", "02_seed_data.sql", "03_purchases_and_chat.sql", "04_buses_and_seats.sql",
-    "09_roles_and_settings.sql", "10_colombia_routes.sql", "11_app_settings.sql",
+    "09_roles_and_settings.sql", "10_colombia_routes.sql", "11_app_settings.sql", "12_baggage_settings.sql",
 )
 BOLIVARIANO = 3
 CONTINENTAL = 4
@@ -110,6 +110,17 @@ class AdminDatabaseTest(unittest.TestCase):
         seat_map = purchases.get_seat_map(CALI_SCHEDULE_ID, self.tomorrow)
         self.assertEqual(seat_map["departure"]["max_seats_per_purchase"], 1)
         self.assertEqual(seat_map["departure"]["reservation_minutes"], 8)
+
+    def test_baggage_rules_are_set_per_company(self):
+        changed = admin.update_company_settings(BOLIVARIANO, BOLIVARIANO, max_checked_bags=3, bag_weight_kg=25)
+        self.assertEqual((changed["max_checked_bags"], changed["bag_weight_kg"]), (3, 25))
+        seat_map = purchases.get_seat_map(CALI_SCHEDULE_ID, self.tomorrow)
+        self.assertEqual((seat_map["departure"]["max_checked_bags"], seat_map["departure"]["bag_weight_kg"]), (3, 25))
+        other = next(c for c in admin.list_companies() if c["id"] == CONTINENTAL)
+        self.assertEqual((other["max_checked_bags"], other["bag_weight_kg"]), (2, 20))  # the others keep theirs
+        for bags, weight in ((6, None), (-1, None), (None, 4), (None, 51)):
+            with self.assertRaises(admin.AdminError):
+                admin.update_company_settings(None, BOLIVARIANO, max_checked_bags=bags, bag_weight_kg=weight)
 
     # ---------------- Buses, routes and departures ----------------
 
