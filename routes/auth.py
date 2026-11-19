@@ -4,13 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from authentication.tokens import create_token
-from authentication.utilities import encrypt_password, verify_password
+from authentication.utilities import encrypt_password, is_browser_password_hash, verify_password
 from routes.dependencies import get_current_user, limit_login, limit_register
 from services.users import create_user, find_user_by_email
 from services.validation import (
-    EMAIL_MAX_LENGTH, EMAIL_RULE, NAME_MAX_LENGTH, NAME_RULE, PASSWORD_MAX_LENGTH, PASSWORD_RULE,
-    is_valid_email, is_valid_name, is_valid_password, normalize_spaces,
+    EMAIL_MAX_LENGTH, EMAIL_RULE, NAME_MAX_LENGTH, NAME_RULE, PASSWORD_MAX_LENGTH,
+    is_valid_email, is_valid_name, normalize_spaces,
 )
+
+# The browser checks the password rule (8 to 72 characters) before encrypting it;
+# the server only receives the SHA-256 value, so it checks that format.
+ENCRYPTED_PASSWORD_RULE = "La contraseña debe llegar encriptada desde la página de TerminAPP"
 
 router = APIRouter(tags=["Account"])
 
@@ -19,12 +23,12 @@ class RegisterRequest(BaseModel):
     # max_length here stops huge texts before processing them; the detailed rules come below
     name: str = Field(..., max_length=NAME_MAX_LENGTH * 2)
     email: str = Field(..., max_length=EMAIL_MAX_LENGTH * 2)
-    password: str = Field(..., max_length=PASSWORD_MAX_LENGTH * 2)
+    password: str = Field(..., max_length=PASSWORD_MAX_LENGTH * 2, description="SHA-256 sent by the browser")
 
 
 class LoginRequest(BaseModel):
     email: str = Field(..., max_length=EMAIL_MAX_LENGTH * 2)
-    password: str = Field(..., max_length=PASSWORD_MAX_LENGTH * 2)
+    password: str = Field(..., max_length=PASSWORD_MAX_LENGTH * 2, description="SHA-256 sent by the browser")
 
 
 def build_session_response(user):
@@ -46,8 +50,8 @@ def register(request: RegisterRequest):
         raise HTTPException(status_code=400, detail=NAME_RULE)
     if not is_valid_email(email):
         raise HTTPException(status_code=400, detail=EMAIL_RULE)
-    if not is_valid_password(request.password):
-        raise HTTPException(status_code=400, detail=PASSWORD_RULE)
+    if not is_browser_password_hash(request.password):
+        raise HTTPException(status_code=400, detail=ENCRYPTED_PASSWORD_RULE)
 
     user = create_user(name, email, encrypt_password(request.password))
     if user is None:
@@ -63,7 +67,11 @@ def register(request: RegisterRequest):
 def login(request: LoginRequest):
     user = find_user_by_email(request.email.strip().lower())
     # Same message for a wrong email or password, so we never reveal which emails exist
-    if user is None or not verify_password(request.password, user["password_hash"]):
+    if (
+        user is None
+        or not is_browser_password_hash(request.password)
+        or not verify_password(request.password, user["password_hash"])
+    ):
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
     return build_session_response(user)
 
