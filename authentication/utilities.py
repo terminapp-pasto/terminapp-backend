@@ -3,11 +3,17 @@
 A password is never stored as is: we store a PBKDF2-SHA256 hash with a random
 salt that is different for every user. That way, even someone who sees the
 database cannot learn the passwords.
+
+The password does not travel as typed either: the browser sends
+SHA-256("terminapp|" + email + "|" + password) (see browser_password_hash), so it
+is not readable in the browser's network tools. The server then stores the
+PBKDF2 hash of that value, so the password is encrypted twice.
 """
 
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 
 HASH_ALGORITHM = "pbkdf2_sha256"
@@ -15,6 +21,22 @@ HASH_FUNCTION = "sha256"
 HASH_ITERATIONS = 600_000
 SALT_SIZE_BYTES = 16
 FIELD_SEPARATOR = "$"
+
+# What the browser sends instead of the password: 64 hexadecimal characters
+BROWSER_HASH_PREFIX = "terminapp"
+BROWSER_HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def browser_password_hash(email, password):
+    """The same value the browser computes before sending a password (src/passwordHash.ts).
+    The email works as a salt, so two users with the same password send different values.
+    Used for the accounts the server creates itself, like the test accounts."""
+    text = f"{BROWSER_HASH_PREFIX}|{email.strip().lower()}|{password}"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def is_browser_password_hash(text):
+    return bool(BROWSER_HASH_PATTERN.match(text))
 
 
 def _encode_base64(raw_bytes):
