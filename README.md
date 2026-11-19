@@ -71,7 +71,7 @@ because TerminAPP is used by travellers in Colombia.
 |---|---|---|
 | GET | `/admin/companies` | Companies with their settings and how many buses, routes and departures they have |
 | POST | `/admin/companies` | **admin**: adds a company |
-| POST | `/admin/companies/{id}/settings` | `max_seats_per_purchase` (1 to 10) and `reservation_minutes` (5 to 30) |
+| POST | `/admin/companies/{id}/settings` | `max_seats_per_purchase` (1 to 10), `reservation_minutes` (5 to 30), `max_checked_bags` (0 to 5) and `bag_weight_kg` (5 to 50) |
 | GET / POST | `/admin/buses` | Lists buses / adds one with its seats (`plate` like `TRP-101`, `capacity` 10 to 100: over 60 the seat map shows two floors) |
 | GET | `/admin/destinations` | Every town |
 | GET / POST | `/admin/routes` | Routes with their departures / adds a route from Pasto (only the admin can add a new town) |
@@ -256,6 +256,7 @@ runs without its columns. They can also be run by hand; running them twice is ha
 | `09_roles_and_settings.sql` | `users.role` and `users.company_id`; per-company `max_seats_per_purchase` and `reservation_minutes`; `schedules.bus_id` and `schedules.active`; `payments.contact_phone`; `tickets.checked_bags`; the `document_types` table |
 | `10_colombia_routes.sql` | 15 more destinations from Pasto (Popayán, Medellín, Pereira, Bucaramanga, Barranquilla...) with their departures; reference prices the admin can change |
 | `11_app_settings.sql` | `app_settings` (key, value): the texts and general rules the admin edits |
+| `12_baggage_settings.sql` | `companies.max_checked_bags` (0 to 5) and `companies.bag_weight_kg` (5 to 50): each company's baggage rules |
 
 The first 5 tables support the search; the rest support roles, authentication, purchases, payments and the AI chat.
 
