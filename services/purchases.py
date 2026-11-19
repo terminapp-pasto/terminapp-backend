@@ -43,7 +43,9 @@ from structs.state_machine import (
 DEFAULT_RESERVATION_MINUTES = 10
 MAX_SEATS_PER_PURCHASE = 5
 SEATS_PER_PURCHASE_LIMIT = 10  # no company can allow more than this
-MAX_CHECKED_BAGS = 2
+MAX_CHECKED_BAGS = 2          # default of companies.max_checked_bags (bags in the hold per passenger)
+CHECKED_BAGS_LIMIT = 5        # no company can allow more than this
+DEFAULT_BAG_WEIGHT_KG = 20    # default of companies.bag_weight_kg
 # Purchases made before the deadline was stored (payments.expires_at) used these times
 RESERVATION_MINUTES = 15
 PAYMENT_WINDOW_MINUTES = 31
@@ -198,7 +200,7 @@ def _new_booking_code(cursor):
             return code
 
 
-def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_types=None):
+def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_types=None, max_bags=MAX_CHECKED_BAGS):
     """Validates the passengers (one per seat) and returns
     [(seat, name, document_type, document, checked_bags)].
     document_type is optional and defaults to CC (national ID); checked_bags defaults to 0.
@@ -234,8 +236,8 @@ def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_type
                 "Cada pasajero debe tener su propio documento"
             )
         seen_documents.put(document_key, position)
-        if not isinstance(checked_bags, int) or not 0 <= checked_bags <= MAX_CHECKED_BAGS:
-            raise PurchaseError(f"Pasajero {position}: puede llevar de 0 a {MAX_CHECKED_BAGS} maletas en bodega")
+        if not isinstance(checked_bags, int) or not 0 <= checked_bags <= max_bags:
+            raise PurchaseError(f"Pasajero {position}: puede llevar de 0 a {max_bags} maletas en bodega")
         cleaned.append((seat, name, document_type, document, checked_bags))
     return cleaned
 
@@ -257,7 +259,8 @@ def clean_contact_phone(phone):
 DEPARTURE_QUERY = """
     SELECT s.id, s.departure_time, s.price, c.name, o.name, d.name,
            r.duration_min, b.id, b.capacity, b.plate,
-           c.id, c.max_seats_per_purchase, c.reservation_minutes, s.active
+           c.id, c.max_seats_per_purchase, c.reservation_minutes, s.active,
+           c.max_checked_bags, c.bag_weight_kg
     FROM schedules s
     JOIN routes r ON r.id = s.route_id
     JOIN companies c ON c.id = r.company_id
@@ -337,6 +340,8 @@ def _get_departure(cursor, schedule_id, lock=False):
         "company_id": row[10],
         "max_seats_per_purchase": row[11],
         "reservation_minutes": row[12],
+        "max_checked_bags": row[14],
+        "bag_weight_kg": row[15],
     }
 
 
@@ -393,7 +398,9 @@ def reserve_seats(user_id, schedule_id, travel_date, passengers, contact_phone=N
     with connect() as connection, connection.cursor() as cursor:
         _expire_old_reservations(cursor)
         departure = _get_departure(cursor, schedule_id, lock=True)
-        cleaned = clean_passengers(passengers, departure["max_seats_per_purchase"], document_type_rules(cursor))
+        cleaned = clean_passengers(
+            passengers, departure["max_seats_per_purchase"], document_type_rules(cursor), departure["max_checked_bags"]
+        )
         numbers = [seat for seat, _, _, _, _ in cleaned]
         _check_travel_date(travel_date, departure)
 

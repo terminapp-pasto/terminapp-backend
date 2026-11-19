@@ -28,7 +28,9 @@ class PassengerData(BaseModel):
     name: str = Field(..., max_length=NAME_MAX_LENGTH * 2)
     document_type: str = Field(DEFAULT_DOCUMENT_TYPE, max_length=2, description="CC, TI, CE or PA")
     document: str = Field(..., max_length=DOCUMENT_MAX_LENGTH * 2)
-    checked_bags: int = Field(0, ge=0, le=purchases.MAX_CHECKED_BAGS, description="Bags in the hold, 0 to 2")
+    checked_bags: int = Field(
+        0, ge=0, le=purchases.CHECKED_BAGS_LIMIT, description="Bags in the hold, up to the company's max_checked_bags"
+    )
 
 
 class PurchaseRequest(BaseModel):
