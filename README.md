@@ -154,7 +154,9 @@ other users into company employees.
   Stripe always runs with test keys (`sk_test_...`).
 - **Roles.** `user` (traveller), `company` (one bus company) and `admin` (the terminal). The role is read from the
   database on every request, so taking a role away works at once, and the admin cannot remove their own admin role.
-- **Passwords** are stored with PBKDF2 (salted hash), never in plain text. Sessions use JWT tokens signed with
+- **Passwords never travel or are stored in plain text.** The browser sends SHA-256(`terminapp|email|password`)
+  (64 hexadecimal characters; `/register` and `/login` reject anything else), and the server stores the PBKDF2 hash
+  of that value with a random salt. The page checks the 8-to-72-character rule before encrypting. Sessions use JWT tokens signed with
   `TOKEN_SECRET` that expire after 24 hours.
 - **Rate limits** (`services/rate_limit.py`, built with our own hash table and queue): too many attempts in a row
   answer `429` with how many seconds to wait.
