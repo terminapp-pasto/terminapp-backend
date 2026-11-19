@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import config
-from authentication.utilities import encrypt_password
+from authentication.utilities import browser_password_hash, encrypt_password
 from routes import admin, auth, chat, purchases, search, system
 from services.migrations import apply_pending_migrations
 from services.users import ROLE_ADMIN, ROLE_USER, make_company_account, upsert_user
@@ -27,7 +27,8 @@ def create_account(name, email, password, role=None):
     if not (email and password):
         return
     try:
-        upsert_user(name, email.strip().lower(), encrypt_password(password), role)
+        # stored like the accounts made from the page: PBKDF2 of the value the browser sends
+        upsert_user(name, email.strip().lower(), encrypt_password(browser_password_hash(email, password)), role)
     except psycopg.Error as error:
         # If the database does not answer, the API starts anyway
         print(f"Could not create the account {email}: {error}")
