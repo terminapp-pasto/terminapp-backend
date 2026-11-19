@@ -53,14 +53,10 @@ class PassengersTest(unittest.TestCase):
         with self.assertRaises(PurchaseError):
             clean_passengers([self.passenger(5), self.passenger(5)])
 
-    def test_rejects_the_same_document_twice(self):
-        with self.assertRaises(PurchaseError) as context:
-            clean_passengers([self.passenger(1), self.passenger(2, "Luis Gómez", "1.085.123.456")])
-        self.assertIn("pasajero 1", context.exception.message)
-        # the same number with another document type is another person
-        cleaned = clean_passengers([self.passenger(1, document="123456"),
-                                    {"seat": 2, "name": "Luis Gómez", "document_type": "CE", "document": "123456"}])
-        self.assertEqual(len(cleaned), 2)
+    def test_copied_passengers_with_the_same_document_are_accepted(self):
+        # the page's "copy to every passenger" button fills them all with passenger 1's data
+        cleaned = clean_passengers([self.passenger(1), self.passenger(2, document="1.085.123.456")])
+        self.assertEqual([row[3] for row in cleaned], ["1085123456", "1085123456"])
 
     def test_company_limit_and_luggage(self):
         with self.assertRaises(PurchaseError):

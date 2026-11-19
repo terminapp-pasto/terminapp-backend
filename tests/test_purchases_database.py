@@ -326,10 +326,9 @@ class PurchasesDatabaseTest(unittest.TestCase):
         self.set_company(max_seats_per_purchase=7)
         self.assertEqual(len(self.reserve(self.ana, range(1, 8))["seats"]), 7)
 
-    def test_same_document_twice_is_rejected(self):
-        with self.assertRaises(purchases.PurchaseError) as context:
-            self.reserve_with([passenger(1, document="1085123456"), passenger(2, document="1.085.123.456")])
-        self.assertIn("mismo documento", context.exception.message)
+    def test_passengers_may_share_the_same_name_and_document(self):
+        purchase = self.reserve_with([passenger(1, document="1085123456"), passenger(2, document="1.085.123.456")])
+        self.assertEqual([p["document"] for p in purchase["passengers"]], ["1085123456", "1085123456"])
 
     def reserve_with(self, travellers, phone=None):
         return purchases.reserve_seats(self.ana, CALI_SCHEDULE_ID, self.travel_date, travellers, phone)
