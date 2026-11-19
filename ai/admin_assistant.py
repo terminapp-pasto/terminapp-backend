@@ -71,8 +71,10 @@ TOOL_DECLARATIONS = [
           {"key": {"type": "string"}, "text_value": {"type": "string", "description": "For texts."},
            "number_value": {"type": "integer", "description": "For numbers."}}, ["key"]),
     _tool("propose_company_settings",
-          "Proposes new settings for a company: minutes to pay before the seats are released and/or seats per purchase.",
-          {"company_id": INTEGER, "reservation_minutes": INTEGER, "max_seats_per_purchase": INTEGER}, ["company_id"]),
+          "Proposes new settings for a company: minutes to pay before the seats are released, seats per purchase, "
+          "bags in the hold per passenger and/or maximum kilograms per bag.",
+          {"company_id": INTEGER, "reservation_minutes": INTEGER, "max_seats_per_purchase": INTEGER,
+           "max_checked_bags": INTEGER, "bag_weight_kg": INTEGER}, ["company_id"]),
 ]
 
 
@@ -147,7 +149,8 @@ class AdminTools:
         summary = f"{verb} la salida de las {departure['departure_time']} de {route['company']} a {route['destination']}"
         return self._propose(summary, f"/admin/departures/{departure_id}", {"active": bool(on_sale)})
 
-    def propose_company_settings(self, company_id, reservation_minutes=None, max_seats_per_purchase=None):
+    def propose_company_settings(self, company_id, reservation_minutes=None, max_seats_per_purchase=None,
+                                 max_checked_bags=None, bag_weight_kg=None):
         company = next((c for c in admin.list_companies(self.scope) if c["id"] == company_id), None)
         if company is None:
             raise admin.AdminError("No encontré esa empresa", 404)
@@ -160,6 +163,14 @@ class AdminTools:
             admin.check_max_seats(max_seats_per_purchase)
             changes.append(f"máximo {max_seats_per_purchase} sillas por compra")
             body["max_seats_per_purchase"] = max_seats_per_purchase
+        if max_checked_bags is not None:
+            admin.check_max_checked_bags(max_checked_bags)
+            changes.append(f"máximo {max_checked_bags} {'maleta' if max_checked_bags == 1 else 'maletas'} en bodega por pasajero")
+            body["max_checked_bags"] = max_checked_bags
+        if bag_weight_kg is not None:
+            admin.check_bag_weight(bag_weight_kg)
+            changes.append(f"{bag_weight_kg} kg por maleta")
+            body["bag_weight_kg"] = bag_weight_kg
         if not body:
             raise admin.AdminError("No dijiste qué cambiar")
         summary = f"Dejar a {company['name']} con " + " y ".join(changes)
