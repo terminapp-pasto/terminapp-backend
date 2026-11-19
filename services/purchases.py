@@ -204,7 +204,8 @@ def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_type
     """Validates the passengers (one per seat) and returns
     [(seat, name, document_type, document, checked_bags)].
     document_type is optional and defaults to CC (national ID); checked_bags defaults to 0.
-    The same person cannot travel twice in one purchase (same type and document)."""
+    The same document may repeat: the "copy to every passenger" button of the page
+    fills all of them with passenger 1's data, which makes testing a purchase quick."""
     if not passengers:
         raise PurchaseError("Elige al menos un asiento")
     if len(passengers) > max_seats:
@@ -212,7 +213,6 @@ def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_type
 
     cleaned = []
     seen_seats = HashTable()
-    seen_documents = HashTable()
     for position, passenger in enumerate(passengers, start=1):
         seat = passenger["seat"]
         name = normalize_spaces(passenger["name"])
@@ -228,14 +228,6 @@ def clean_passengers(passengers, max_seats=MAX_SEATS_PER_PURCHASE, document_type
             raise PurchaseError(f"Pasajero {position}: {document_type_rule(document_types)}")
         if not is_valid_document_of_type(document, document_type, document_types):
             raise PurchaseError(f"Pasajero {position}: {document_rule(document_type, document_types)}")
-        document_key = f"{document_type}:{document}"
-        if seen_documents.contains(document_key):
-            first = seen_documents.get(document_key)
-            raise PurchaseError(
-                f"Pasajero {position}: tiene el mismo documento que el pasajero {first}. "
-                "Cada pasajero debe tener su propio documento"
-            )
-        seen_documents.put(document_key, position)
         if not isinstance(checked_bags, int) or not 0 <= checked_bags <= max_bags:
             raise PurchaseError(f"Pasajero {position}: puede llevar de 0 a {max_bags} maletas en bodega")
         cleaned.append((seat, name, document_type, document, checked_bags))
