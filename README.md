@@ -72,7 +72,7 @@ because TerminAPP is used by travellers in Colombia.
 | GET | `/admin/companies` | Companies with their settings and how many buses, routes and departures they have |
 | POST | `/admin/companies` | **admin**: adds a company |
 | POST | `/admin/companies/{id}/settings` | `max_seats_per_purchase` (1 to 10) and `reservation_minutes` (5 to 30) |
-| GET / POST | `/admin/buses` | Lists buses / adds one with its seats (`plate` like `TRP-101`, `capacity` 10 to 60) |
+| GET / POST | `/admin/buses` | Lists buses / adds one with its seats (`plate` like `TRP-101`, `capacity` 10 to 100: over 60 the seat map shows two floors) |
 | GET | `/admin/destinations` | Every town |
 | GET / POST | `/admin/routes` | Routes with their departures / adds a route from Pasto (only the admin can add a new town) |
 | POST | `/admin/routes/{id}/price` | Same price for every departure of the route |
